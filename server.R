@@ -5,10 +5,10 @@ library('leaflet')
 library('XML')
 # requireNamespace('rgdal')
 
-ensure_data <- function(dir_data='./data/') {
+ensure_data <- function(dir_data='./data_input/') {
   dir_download <- paste0(dir_data, 'download/')
   dir_extracted <- paste0(dir_data, 'extracted/')
-  dir_created <- paste0(dir_data, 'created/')
+  dir_created <- './data/'
   # canada = 'https://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/2016/lpr_000b16a_e.zip'
   canada <- 'http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gpr_000b11a_e.zip'
   fbp <- 'https://cwfis.cfs.nrcan.gc.ca/downloads/fuels/development/Canadian_Forest_FBP_Fuel_Types/Canadian_Forest_FBP_Fuel_Types_v20191114.zip'
@@ -24,31 +24,35 @@ ensure_data <- function(dir_data='./data/') {
     }
     return(dir_out)
   }
-  file_canada <- list.files(ensure_file(canada),
-                            pattern='*.shp',
-                            full.names=TRUE)[[1]]
   file_simple_canada <- paste0(dir_created, 'canada_simple.shp')
   if (!file.exists(file_simple_canada)) {
-    shp_canada <- st_read(file_canada) %>%
-      sf::st_transform('EPSG:3347')
-    flag_orig <- sf_use_s2()
-    sf_use_s2(FALSE)
-    shp_canada <- st_simplify(shp_canada, dTolerance=1000) %>%
-      sf::st_transform('+proj=longlat +datum=WGS84')
-    sf_use_s2(flag_orig)
-    st_write(shp_canada, file_simple_canada)
+    file_canada <- list.files(ensure_file(canada),
+                              pattern='*.shp',
+                              full.names=TRUE)[[1]]
+    if (!file.exists(file_simple_canada)) {
+      shp_canada <- st_read(file_canada) %>%
+        sf::st_transform('EPSG:3347')
+      flag_orig <- sf_use_s2()
+      sf_use_s2(FALSE)
+      shp_canada <- st_simplify(shp_canada, dTolerance=1000) %>%
+        sf::st_transform('+proj=longlat +datum=WGS84')
+      sf_use_s2(flag_orig)
+      st_write(shp_canada, file_simple_canada)
+    }
   }
   shp_canada <- st_read(file_simple_canada)
-  file_fbp <- list.files(ensure_file(fbp),
-                         pattern='FBP_FuelLayer.tif',
-                         full.names=TRUE,
-                         recursive=TRUE)[[1]]
   file_proj_fbp <- paste0(dir_created, 'fbp_proj.tif')
   if (!file.exists(file_proj_fbp)) {
-    tif_fbp <- rast(file_fbp)
-    # NOTE: super slow - look for another way
-    proj_fbp <- projectRasterForLeaflet(tif_fbp, method='ngb')
-    writeRaster(proj_fbp, file_proj_fbp, overwrite=TRUE)
+    file_fbp <- list.files(ensure_file(fbp),
+                           pattern='FBP_FuelLayer.tif',
+                           full.names=TRUE,
+                           recursive=TRUE)[[1]]
+    if (!file.exists(file_proj_fbp)) {
+      tif_fbp <- rast(file_fbp)
+      # NOTE: super slow - look for another way
+      proj_fbp <- projectRasterForLeaflet(tif_fbp, method='ngb')
+      writeRaster(proj_fbp, file_proj_fbp, overwrite=TRUE)
+    }
   }
   proj_fbp <- rast(file_proj_fbp)
   file_agg_fbp <- paste0(dir_created, 'fbp_agg.tif')
@@ -57,10 +61,15 @@ ensure_data <- function(dir_data='./data/') {
     writeRaster(agg_fbp, file_agg_fbp, overwrite=TRUE)
   }
   tif_fbp_agg <- rast(file_agg_fbp)
-  fbp_style <- XML::xmlParse(list.files(dir_extracted,
-                                        pattern='QGIS_Burn_p3_style.qml',
-                                        full.names=TRUE,
-                                        recursive=TRUE)[[1]])
+  file_style_fbp <- paste0(dir_created, 'fbp_style.xml')
+  if (!file.exists(file_style_fbp)) {
+    file.copy(list.files(dir_extracted,
+                         pattern='QGIS_Burn_p3_style.qml',
+                         full.names=TRUE,
+                         recursive=TRUE)[[1]],
+              file_style_fbp)
+  }
+  fbp_style <- XML::xmlParse(file_style_fbp)
   fbp_colours <- xmlElementsByTagName(xmlRoot(fbp_style), 'paletteEntry', recursive=TRUE)
   names(fbp_colours) <- NULL
   fct_colours <- function(x) {
