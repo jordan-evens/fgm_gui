@@ -15,6 +15,13 @@ ui<-fillPage(
     br(),
     h1("Fire Growth Modelling Playground"),
     br(),br(),
-    withSpinner(leafletOutput("Map", height='100vh'))
+    column(8,
+    withSpinner(leafletOutput("map", height='100vh'))
+    ),
+    column(4,
+    hidden(div(id='div_map_zoom',
+    withSpinner(plotOutput('map_zoom'))
+    ))
+    )
     )
   )

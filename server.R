@@ -1,9 +1,12 @@
 library('terra')
 library('sf')
+library('sp')
 library('dplyr')
 library('leaflet')
 library('XML')
-# requireNamespace('rgdal')
+library('data.table')
+
+NUM_CELLS <- 200
 
 ensure_data <- function(dir_data='./data_input/') {
   dir_download <- paste0(dir_data, 'download/')
@@ -87,11 +90,17 @@ ensure_data <- function(dir_data='./data_input/') {
 
 
 server <- function(input, output, session) {
-  data <- ensure_data()
-  shp_canada <- data$SHP_CANADA
-  tif_fbp <- data$TIF_FBP_AGG
-  tif_fbp <- raster::raster(tif_fbp)
-  output$Map <- renderLeaflet({
+    data <- ensure_data()
+    shp_canada <- data$SHP_CANADA
+    tif_fbp <- data$TIF_FBP_AGG
+    tif_fbp <- raster::raster(tif_fbp)
+    m <- minmax(data$TIF_FBP)
+    # HACK: don't figure out how to subset a data.frame right now
+    df_colours <- data.table(data.frame(c(value=list(m[1]:m[2]), color=lapply(list(m[1]:m[2]), data$COLOURS_FBP))))
+    # df_colours <- df_colours[!is.na(color),]
+    df_colours[is.na(color),]$color <- 'magenta'
+    df_colours <- data.frame(df_colours)
+    output$map <- renderLeaflet({
     bbox <- as.vector(st_bbox(shp_canada))
     colours_fbp <- data$COLOURS_FBP
     # # NOTE: apparently leaflet addRasterImage() only works with EPSG:3857
@@ -106,6 +115,7 @@ server <- function(input, output, session) {
                      project=FALSE,
                      colors=colours_fbp,
                      opacity=0.5,
+                     layerId='FBP',
                      group='FBP') %>%
       addLayersControl(
         baseGroups = c("Default Maptile", "Satellite Maptile"),
@@ -116,5 +126,41 @@ server <- function(input, output, session) {
                   weight = 1,
                   fill=FALSE,
                   label=shp_canada$PREABBR)
+  })
+  observe({
+    # event <- list(lat=48.67645, lng=-88.6908)
+    leafletProxy("map") %>% clearPopups()
+    event <- input$map_click
+    # print(event)
+    if (is.null(event)) {
+      return()
+    }
+    # print('Handling click')
+    pt <- st_as_sf(data.frame(latitude=event$lat, longitude=event$lng), coords=c('longitude', 'latitude'), crs='WGS84')
+    fbp_orig <- data$TIF_FBP
+    pt_proj <- st_transform(pt, crs(fbp_orig))
+    b <- st_bbox(pt_proj)
+    b_orig <- st_bbox(fbp_orig)
+    dist <- NUM_CELLS * ((b_orig$xmax - b_orig$xmin) / ncol(fbp_orig))
+    box <- ext(c(b$xmin - dist / 2, b$xmax + dist / 2, b$ymin - dist / 2, b$ymax + dist / 2))
+    # clipped <- crop(fbp_orig, box, mask=TRUE)
+    clipped <- crop(fbp_orig, box)
+    # HACK: for some reason it's indexing on the row index of the unique values and not the actual value
+    df <- df_colours[df_colours$value %in% as.vector(unique(clipped)[[1]]),]
+    band <- names(clipped)[[1]]
+    # names(clipped) <- 'value'
+    isolate({
+      print(event$id)
+      print(event$lat)
+      print(event$lng)
+    })
+    # print(clipped)
+    if (!all(is.nan(minmax(clipped[[band]])))) {
+      shinyjs::show('div_map_zoom')
+      output$map_zoom <- renderPlot(
+        plot(clipped, band, col=df, type='classes')
+      )
+    }
+    return(event)
   })
 }
