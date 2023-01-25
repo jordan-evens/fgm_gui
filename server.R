@@ -154,12 +154,15 @@ server <- function(input, output, session) {
       print(event$lat)
       print(event$lng)
     })
+    session$userData$pt_origin <- pt_proj
+    session$userData$clipped <- clipped
     # print(clipped)
     if (!all(is.nan(minmax(clipped[[band]])))) {
       shinyjs::show('div_map_zoom')
-      output$map_zoom <- renderPlot(
+      output$map_zoom <- renderPlot({
         plot(clipped, band, col=df, type='classes')
-      )
+        plot(pt_proj, pch=13, cex=4, col='black', lwd=1.5, add=TRUE)
+      })
     }
     return(event)
   })
