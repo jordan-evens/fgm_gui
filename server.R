@@ -8,6 +8,7 @@ server <- function(input, output, session) {
     shp_canada <- data$SHP_CANADA
     tif_fbp <- data$TIF_FBP_AGG
     tif_fbp <- raster::raster(tif_fbp)
+    colours_fbp <- data$COLOURS_FBP
     m <- minmax(data$TIF_FBP)
     # HACK: don't figure out how to subset a data.frame right now
     df_colours <- data.table(data.frame(c(value=list(m[1]:m[2]), color=lapply(list(m[1]:m[2]), data$COLOURS_FBP))))
@@ -16,7 +17,6 @@ server <- function(input, output, session) {
     df_colours <- data.frame(df_colours)
     output$map <- renderLeaflet({
     bbox <- as.vector(st_bbox(shp_canada))
-    colours_fbp <- data$COLOURS_FBP
     # # NOTE: apparently leaflet addRasterImage() only works with EPSG:3857
     m <- leaflet() %>%
       addProviderTiles(providers$Esri.WorldGrayCanvas,
@@ -41,10 +41,9 @@ server <- function(input, output, session) {
                   fill=FALSE,
                   label=shp_canada$PREABBR)
   })
-  observe({
+  handleClick <- function(event) {
     # event <- list(lat=48.67645, lng=-88.6908)
     leafletProxy("map") %>% clearPopups()
-    event <- input$map_click
     # print(event)
     if (is.null(event)) {
       return()
@@ -66,6 +65,7 @@ server <- function(input, output, session) {
     band <- names(clipped)[[1]]
     # names(clipped) <- 'value'
     isolate({
+      print(input$map_bounds)
       print(event$id)
       print(event$lat)
       print(event$lng)
@@ -73,21 +73,39 @@ server <- function(input, output, session) {
     session$userData$pt_originj <- pt
     session$userData$pt_origin_proj <- pt_proj
     session$userData$clipped <- clipped
+    icon_origin <- makeIcon(iconUrl=pchIcons(13, 40, 40, col="black", lwd = 2)[[1]],
+                            iconAnchorX=20,
+                            iconAnchorY=20)
     # print(clipped)
     if (!all(is.nan(minmax(clipped[[band]])))) {
       shinyjs::show('div_map_zoom')
-      output$map_zoom <- renderPlot({
-        plot(clipped, band, col=df, type='classes')
-        plot(pt_proj, pch=13, cex=4, col='black', lwd=1.5, add=TRUE)
+      bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
+      output$map_zoom <- renderLeaflet({
+        m <- leaflet() %>%
+          addRasterImage(x=clipped,
+                         project=FALSE,
+                         colors=colours_fbp,
+                         opacity=0.5,
+                         layerId='FBP',
+                         group='FBP') %>%
+          fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
+          addMarkers(data=pt,
+                     layerId='origin',
+                     icon=icon_origin)
       })
       leafletProxy("map") %>%
         addMarkers(data=pt,
                    layerId='origin',
-                   icon=makeIcon(iconUrl=pchIcons(13, 40, 40, col="black", lwd = 2)[[1]],
-                                 iconAnchorX=20,
-                                 iconAnchorY=20))
-              
+                   icon=icon_origin)
     }
     return(event)
+  }
+  observe({
+    event <- input$map_click
+    handleClick(event)
+  })
+  observe({
+    event <- input$map_zoom_click
+    handleClick(event)
   })
 }
