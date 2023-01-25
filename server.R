@@ -1,92 +1,6 @@
-library('terra')
-library('sf')
-library('sp')
-library('dplyr')
-library('leaflet')
-library('XML')
-library('data.table')
+source('common.R')
 
 NUM_CELLS <- 200
-
-ensure_data <- function(dir_data='./data_input/') {
-  dir_download <- paste0(dir_data, 'download/')
-  dir_extracted <- paste0(dir_data, 'extracted/')
-  dir_created <- './data/'
-  # canada = 'https://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/2016/lpr_000b16a_e.zip'
-  canada <- 'http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gpr_000b11a_e.zip'
-  fbp <- 'https://cwfis.cfs.nrcan.gc.ca/downloads/fuels/development/Canadian_Forest_FBP_Fuel_Types/Canadian_Forest_FBP_Fuel_Types_v20191114.zip'
-  dir.create(dir_download, showWarnings=FALSE, recursive=TRUE)
-  ensure_file <- function(url) {
-    f <- paste0(dir_download, basename(url))
-    if (!file.exists(f)) {
-      download.file(url, f)
-    }
-    dir_out <- paste0(dir_extracted, tools::file_path_sans_ext(basename(url)))
-    if (!dir.exists(dir_out)) {
-      unzip(f, exdir=dir_out)
-    }
-    return(dir_out)
-  }
-  file_simple_canada <- paste0(dir_created, 'canada_simple.shp')
-  if (!file.exists(file_simple_canada)) {
-    file_canada <- list.files(ensure_file(canada),
-                              pattern='*.shp',
-                              full.names=TRUE)[[1]]
-    if (!file.exists(file_simple_canada)) {
-      shp_canada <- st_read(file_canada) %>%
-        sf::st_transform('EPSG:3347')
-      flag_orig <- sf_use_s2()
-      sf_use_s2(FALSE)
-      shp_canada <- st_simplify(shp_canada, dTolerance=1000) %>%
-        sf::st_transform('+proj=longlat +datum=WGS84')
-      sf_use_s2(flag_orig)
-      st_write(shp_canada, file_simple_canada)
-    }
-  }
-  shp_canada <- st_read(file_simple_canada)
-  file_proj_fbp <- paste0(dir_created, 'fbp_proj.tif')
-  if (!file.exists(file_proj_fbp)) {
-    file_fbp <- list.files(ensure_file(fbp),
-                           pattern='FBP_FuelLayer.tif',
-                           full.names=TRUE,
-                           recursive=TRUE)[[1]]
-    if (!file.exists(file_proj_fbp)) {
-      tif_fbp <- rast(file_fbp)
-      # NOTE: super slow - look for another way
-      proj_fbp <- projectRasterForLeaflet(tif_fbp, method='ngb')
-      writeRaster(proj_fbp, file_proj_fbp, overwrite=TRUE)
-    }
-  }
-  proj_fbp <- rast(file_proj_fbp)
-  file_agg_fbp <- paste0(dir_created, 'fbp_agg.tif')
-  if (!file.exists(file_agg_fbp)) {
-    agg_fbp <- aggregate(proj_fbp, fact=10, fun='modal')
-    writeRaster(agg_fbp, file_agg_fbp, overwrite=TRUE)
-  }
-  tif_fbp_agg <- rast(file_agg_fbp)
-  file_style_fbp <- paste0(dir_created, 'fbp_style.xml')
-  if (!file.exists(file_style_fbp)) {
-    file.copy(list.files(dir_extracted,
-                         pattern='QGIS_Burn_p3_style.qml',
-                         full.names=TRUE,
-                         recursive=TRUE)[[1]],
-              file_style_fbp)
-  }
-  fbp_style <- XML::xmlParse(file_style_fbp)
-  fbp_colours <- xmlElementsByTagName(xmlRoot(fbp_style), 'paletteEntry', recursive=TRUE)
-  names(fbp_colours) <- NULL
-  fct_colours <- function(x) {
-    r <- list()
-    r[as.character(xmlGetAttr(x, 'value'))] <- xmlGetAttr(x, 'color')
-    return(r)
-  }
-  fbp_pairs <- unlist(lapply(fbp_colours, fct_colours))
-  fct_palette <- function(v) { fbp_pairs[as.character(v)] }
-  return(list(SHP_CANADA=shp_canada,
-              TIF_FBP=proj_fbp,
-              TIF_FBP_AGG=tif_fbp_agg,
-              COLOURS_FBP=fct_palette))
-}
 
 
 server <- function(input, output, session) {
@@ -136,7 +50,9 @@ server <- function(input, output, session) {
       return()
     }
     # print('Handling click')
-    pt <- st_as_sf(data.frame(latitude=event$lat, longitude=event$lng), coords=c('longitude', 'latitude'), crs='WGS84')
+    lat <- event$lat
+    lon <- event$lng
+    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
     fbp_orig <- data$TIF_FBP
     pt_proj <- st_transform(pt, crs(fbp_orig))
     b <- st_bbox(pt_proj)
@@ -154,7 +70,8 @@ server <- function(input, output, session) {
       print(event$lat)
       print(event$lng)
     })
-    session$userData$pt_origin <- pt_proj
+    session$userData$pt_originj <- pt
+    session$userData$pt_origin_proj <- pt_proj
     session$userData$clipped <- clipped
     # print(clipped)
     if (!all(is.nan(minmax(clipped[[band]])))) {
@@ -163,6 +80,13 @@ server <- function(input, output, session) {
         plot(clipped, band, col=df, type='classes')
         plot(pt_proj, pch=13, cex=4, col='black', lwd=1.5, add=TRUE)
       })
+      leafletProxy("map") %>%
+        addMarkers(data=pt,
+                   layerId='origin',
+                   icon=makeIcon(iconUrl=pchIcons(13, 40, 40, col="black", lwd = 2)[[1]],
+                                 iconAnchorX=20,
+                                 iconAnchorY=20))
+              
     }
     return(event)
   })
