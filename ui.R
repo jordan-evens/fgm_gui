@@ -21,9 +21,9 @@ ui <- fillPage(
       column(4,
              hidden(div(id='div_map_zoom',
                         withSpinner(leafletOutput('map_zoom'))
-                        ))
-             )
-      ),
+             ))
+      )
+    ),
     fluidRow(
       column(8, div()),
       column(4,
@@ -31,9 +31,9 @@ ui <- fillPage(
                         fluidRow(
                           column(6, numericInput('latitude', label='latitude', value=50)),
                           column(6, numericInput('longitude', label='longitude', value=-96))
-                          ),
+                        ),
                         DT::dataTableOutput("weather"))
-                    ))
-      )
+             ))
     )
   )
+)

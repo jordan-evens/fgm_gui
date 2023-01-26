@@ -6,14 +6,14 @@ NUM_CELLS <- 200
 
 
 server <- function(input, output, session) {
-    data <- ensure_data()
-    shp_canada <- data$SHP_CANADA
-    tif_fbp <- data$TIF_FBP_AGG
-    tif_fbp <- raster::raster(tif_fbp)
-    colours_fbp <- data$COLOURS_FBP
-    m <- minmax(data$TIF_FBP)
-    bbox <- as.vector(st_bbox(shp_canada))
-    output$map <- renderLeaflet({
+  data <- ensure_data()
+  shp_canada <- data$SHP_CANADA
+  tif_fbp <- data$TIF_FBP_AGG
+  tif_fbp <- raster::raster(tif_fbp)
+  colours_fbp <- data$COLOURS_FBP
+  m <- minmax(data$TIF_FBP)
+  bbox <- as.vector(st_bbox(shp_canada))
+  output$map <- renderLeaflet({
     # # NOTE: apparently leaflet addRasterImage() only works with EPSG:3857
     m <- leaflet() %>%
       addProviderTiles(providers$Esri.WorldGrayCanvas,
@@ -36,7 +36,7 @@ server <- function(input, output, session) {
                   weight = 1,
                   fill=FALSE,
                   label=shp_canada$PREABBR) %>%
-    # fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
+      # fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
       setView((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2, zoom=3)
   })
   handleClick <- function(event) {
