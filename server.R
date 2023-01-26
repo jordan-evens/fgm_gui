@@ -12,8 +12,8 @@ server <- function(input, output, session) {
     tif_fbp <- raster::raster(tif_fbp)
     colours_fbp <- data$COLOURS_FBP
     m <- minmax(data$TIF_FBP)
-    output$map <- renderLeaflet({
     bbox <- as.vector(st_bbox(shp_canada))
+    output$map <- renderLeaflet({
     # # NOTE: apparently leaflet addRasterImage() only works with EPSG:3857
     m <- leaflet() %>%
       addProviderTiles(providers$Esri.WorldGrayCanvas,
@@ -42,13 +42,14 @@ server <- function(input, output, session) {
   handleClick <- function(event) {
     # event <- list(lat=48.67645, lng=-88.6908)
     leafletProxy("map") %>% clearPopups()
-    # print(event)
-    if (is.null(event)) {
+    if (is.null(event) ||
+        (!is.null(session$userData$latitude) &&
+         !is.null(session$userData$longitude) &&
+         (session$userData$latitude == event$lat && session$userData$longitude == event$lng))) {
       return()
     }
-    # print('Handling click')
-    lat <- event$lat
-    lon <- event$lng
+    lat <- as.numeric(event$lat)
+    lon <- as.numeric(event$lng)
     pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
     fbp_orig <- data$TIF_FBP
     pt_proj <- st_transform(pt, crs(fbp_orig))
@@ -56,25 +57,43 @@ server <- function(input, output, session) {
     b_orig <- st_bbox(fbp_orig)
     dist <- NUM_CELLS * ((b_orig$xmax - b_orig$xmin) / ncol(fbp_orig))
     box <- ext(c(b$xmin - dist / 2, b$xmax + dist / 2, b$ymin - dist / 2, b$ymax + dist / 2))
-    # clipped <- crop(fbp_orig, box, mask=TRUE)
-    clipped <- crop(fbp_orig, box)
+    clipped <- tryCatch(crop(fbp_orig, box), error=function(e) { NULL })
+    if (is.null(clipped)) {
+      return()
+    }
     band <- names(clipped)[[1]]
-    # names(clipped) <- 'value'
-    isolate({
-      print(input$map_bounds)
-      print(event$id)
-      print(event$lat)
-      print(event$lng)
-    })
-    session$userData$pt_originj <- pt
-    session$userData$pt_origin_proj <- pt_proj
-    session$userData$clipped <- clipped
     icon_origin <- makeIcon(iconUrl=pchIcons(13, 40, 40, col="black", lwd = 2)[[1]],
                             iconAnchorX=20,
                             iconAnchorY=20)
-    # print(clipped)
     if (!all(is.nan(minmax(clipped[[band]])))) {
+      session$userData$pt_originj <- pt
+      session$userData$pt_origin_proj <- pt_proj
+      session$userData$clipped <- clipped
+      session$userData$latitude <- lat
+      session$userData$longitude <- lon
+      wx <- data.table(read.csv('./cffdrs-ng/test_hffmc.csv'))
+      wx$lat <- lat
+      wx$long <- lon
+      timezone <- lutz::tz_lookup_coords(lat, lon)
+      init <- wx[1,]
+      date_start <- make_date(init$yr, init$mon, init$day)
+      tz <- tz_offset(date_start, timezone)$utc_offset_h
+      wx <- hFWI(wx, tz)
+      weather <- copy(wx)
+      col_precision <- list(lat=3, long=3)
+      for (col in names(weather)) {
+        if (is.numeric(weather[[col]])) {
+          precision <- ifelse(col %in% names(col_precision), col_precision[[col]], 1)
+          weather[[col]] <- round(weather[[col]], precision)
+        }
+      }
+      output$weather <- DT::renderDT(weather,
+                                     options=list(dom='t', scrollX=TRUE),
+                                     rownames=FALSE)
+      updateTextInput(session, 'latitude', value=lat)
+      updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
+      shinyjs::show('div_info')
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
       output$map_zoom <- renderLeaflet({
         m <- leaflet() %>%
@@ -94,25 +113,6 @@ server <- function(input, output, session) {
                    layerId='origin',
                    icon=icon_origin)
     }
-    wx <- data.table(read.csv('./cffdrs-ng/test_hffmc.csv'))
-    wx$lat <- lat
-    wx$long <- lon
-    timezone <- lutz::tz_lookup_coords(lat, lon)
-    init <- wx[1,]
-    date_start <- make_date(init$yr, init$mon, init$day)
-    tz <- tz_offset(date_start, timezone)$utc_offset_h
-    wx <- hFWI(wx, tz)
-    weather <- copy(wx)
-    col_precision <- list(lat=3, long=3)
-    for (col in names(weather)) {
-      if (is.numeric(weather[[col]])) {
-        precision <- ifelse(col %in% names(col_precision), col_precision[[col]], 1)
-        weather[[col]] <- round(weather[[col]], precision)
-      }
-    }
-    output$weather <- DT::renderDT(weather,
-                                   options=list(dom='t', scrollX=TRUE),
-                                   rownames=FALSE)
     return(event)
   }
   observe({
@@ -123,4 +123,21 @@ server <- function(input, output, session) {
     event <- input$map_zoom_click
     handleClick(event)
   })
+  
+  fakeClick <- function() {
+    if (is.na(suppressWarnings(as.numeric(input$latitude))) ||
+        is.na(suppressWarnings(as.numeric(input$longitude)))) {
+      return()
+    }
+    event <- list(id=NULL, lat=as.numeric(input$latitude), lng=as.numeric(input$longitude))
+    if (!(event$lat <= 90 && event$lat >= -90 && event$lng >= -360 && event$lng <= 360)) {
+      return()
+    }
+    handleClick(event)
+  }
+  
+  observeEvent(input$latitude, { fakeClick() })
+  observeEvent(input$longitude, { fakeClick() })
+  session$userData$latitude <- NULL
+  session$userData$longitude <- NULL
 }

@@ -8,7 +8,7 @@ library(htmltools)
 library(DT)
 library(shinyjs)
 
-ui<-fillPage(
+ui <- fillPage(
   fluidPage(
     tags$head(HTML("<title>FGM Playground</title>")),
     useShinyjs(),
@@ -26,7 +26,14 @@ ui<-fillPage(
       ),
     fluidRow(
       column(8, div()),
-      column(4, DT::dataTableOutput("weather"))
+      column(4,
+             hidden(div(id='div_info',
+                        fluidRow(
+                          column(6, numericInput('latitude', label='latitude', value=50)),
+                          column(6, numericInput('longitude', label='longitude', value=-96))
+                          ),
+                        DT::dataTableOutput("weather"))
+                    ))
       )
     )
   )
