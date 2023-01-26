@@ -15,14 +15,17 @@ ui<-fillPage(
     br(),
     h1("Fire Growth Modelling Playground"),
     br(),br(),
+    fluidRow(
     column(8,
-    withSpinner(leafletOutput("map", height='100vh'))
+    withSpinner(leafletOutput("map"))
     ),
     column(4,
     hidden(div(id='div_map_zoom',
     withSpinner(leafletOutput('map_zoom'))
-    )),
-    DT::dataTableOutput("weather")
+    )))),
+    fluidRow(
+    column(8, div()),
+    column(4, DT::dataTableOutput("weather"))
     )
     )
   )

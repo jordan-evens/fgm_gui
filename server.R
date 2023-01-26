@@ -26,7 +26,6 @@ server <- function(input, output, session) {
                        options = providerTileOptions(noWrap=TRUE)) %>%
       addProviderTiles(providers$Esri.WorldImagery,
                        group="Satellite Maptile") %>%
-      fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
       addRasterImage(x=tif_fbp,
                      project=FALSE,
                      colors=colours_fbp,
@@ -41,7 +40,9 @@ server <- function(input, output, session) {
                   col="black",
                   weight = 1,
                   fill=FALSE,
-                  label=shp_canada$PREABBR)
+                  label=shp_canada$PREABBR) %>%
+    # fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
+      setView((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2, zoom=3)
   })
   handleClick <- function(event) {
     # event <- list(lat=48.67645, lng=-88.6908)
