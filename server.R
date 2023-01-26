@@ -12,11 +12,6 @@ server <- function(input, output, session) {
     tif_fbp <- raster::raster(tif_fbp)
     colours_fbp <- data$COLOURS_FBP
     m <- minmax(data$TIF_FBP)
-    # HACK: don't figure out how to subset a data.frame right now
-    df_colours <- data.table(data.frame(c(value=list(m[1]:m[2]), color=lapply(list(m[1]:m[2]), data$COLOURS_FBP))))
-    # df_colours <- df_colours[!is.na(color),]
-    df_colours[is.na(color),]$color <- 'magenta'
-    df_colours <- data.frame(df_colours)
     output$map <- renderLeaflet({
     bbox <- as.vector(st_bbox(shp_canada))
     # # NOTE: apparently leaflet addRasterImage() only works with EPSG:3857
@@ -63,8 +58,6 @@ server <- function(input, output, session) {
     box <- ext(c(b$xmin - dist / 2, b$xmax + dist / 2, b$ymin - dist / 2, b$ymax + dist / 2))
     # clipped <- crop(fbp_orig, box, mask=TRUE)
     clipped <- crop(fbp_orig, box)
-    # HACK: for some reason it's indexing on the row index of the unique values and not the actual value
-    df <- df_colours[df_colours$value %in% as.vector(unique(clipped)[[1]]),]
     band <- names(clipped)[[1]]
     # names(clipped) <- 'value'
     isolate({
