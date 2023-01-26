@@ -6,6 +6,15 @@ library('leaflet')
 library('XML')
 library('data.table')
 
+dir_root <- getwd()
+setwd(paste0(dir_root, '/cffdrs-ng'))
+source('make_minmax.r')
+source('make_hourly.r')
+source('NG_FWI.r')
+source('old_cffdrs.r')
+setwd(dir_root)
+
+
 # from example at https://github.com/rstudio/leaflet/blob/main/inst/examples/icons.R#L25-L40
 # use point symbols from base R graphics as icons
 pchIcons <- function(pch = 0:14, width = 30, height = 30, ...) {

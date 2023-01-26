@@ -1,4 +1,6 @@
 source('common.R')
+library('lutz')
+library('DT')
 
 NUM_CELLS <- 200
 
@@ -98,6 +100,25 @@ server <- function(input, output, session) {
                    layerId='origin',
                    icon=icon_origin)
     }
+    wx <- data.table(read.csv('./cffdrs-ng/test_hffmc.csv'))
+    wx$lat <- lat
+    wx$long <- lon
+    timezone <- lutz::tz_lookup_coords(lat, lon)
+    init <- wx[1,]
+    date_start <- make_date(init$yr, init$mon, init$day)
+    tz <- tz_offset(date_start, timezone)$utc_offset_h
+    wx <- hFWI(wx, tz)
+    weather <- copy(wx)
+    col_precision <- list(lat=3, long=3)
+    for (col in names(weather)) {
+      if (is.numeric(weather[[col]])) {
+        precision <- ifelse(col %in% names(col_precision), col_precision[[col]], 1)
+        weather[[col]] <- round(weather[[col]], precision)
+      }
+    }
+    output$weather <- DT::renderDT(weather,
+                                   options=list(dom='t', scrollX=TRUE),
+                                   rownames=FALSE)
     return(event)
   }
   observe({

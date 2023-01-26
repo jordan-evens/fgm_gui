@@ -21,7 +21,8 @@ ui<-fillPage(
     column(4,
     hidden(div(id='div_map_zoom',
     withSpinner(leafletOutput('map_zoom'))
-    ))
+    )),
+    DT::dataTableOutput("weather")
     )
     )
   )
