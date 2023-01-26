@@ -1,11 +1,26 @@
 source('common.R')
 library('lutz')
 library('DT')
+library('shinyvalidate')
 
 NUM_CELLS <- 200
 
 
 server <- function(input, output, session) {
+  check_in_bounds <- function(lat, lon) {
+    return(tryCatch({
+      print(sprintf('lat: %s, lon: %s', lat, lon))
+      pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+      print(pt)
+      fbp_orig <- data$TIF_FBP
+      pt_proj <- st_transform(pt, crs(fbp_orig))
+      return(!is.na(extract(fbp_orig, pt_proj)[names(fbp_orig)[[1]]]))
+    },
+    error=function(e) { FALSE }))
+  }
+  lat_in_bounds <- function(lat) { return(check_in_bounds(lat, as.numeric(input$longitude))) }
+  lon_in_bounds <- function(lon) { return(check_in_bounds(as.numeric(input$latitude), lon)) }
+
   data <- ensure_data()
   shp_canada <- data$SHP_CANADA
   tif_fbp <- data$TIF_FBP_AGG
@@ -50,6 +65,9 @@ server <- function(input, output, session) {
     }
     lat <- as.numeric(event$lat)
     lon <- as.numeric(event$lng)
+    if (!check_in_bounds(lat, lon)) {
+      return()
+    }
     pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
     fbp_orig <- data$TIF_FBP
     pt_proj <- st_transform(pt, crs(fbp_orig))
@@ -140,4 +158,23 @@ server <- function(input, output, session) {
   observeEvent(input$longitude, { fakeClick() })
   session$userData$latitude <- NULL
   session$userData$longitude <- NULL
+
+  iv <- InputValidator$new()
+  iv$add_rule('latitude',
+              compose_rules(
+                sv_required(),
+                sv_numeric(),
+                sv_between(-90, 90),
+                ~ if (!lat_in_bounds(.)) 'Coordinates must be within FBP raster'
+              )
+  )
+  iv$add_rule('longitude',
+              compose_rules(
+                sv_required(),
+                sv_numeric(),
+                sv_between(-360, 360),
+                ~ if (!lon_in_bounds(.)) 'Coordinates must be within FBP raster'
+              )
+  )
+  iv$enable()
 }
