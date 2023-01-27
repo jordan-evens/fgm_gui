@@ -4,6 +4,7 @@ library('DT')
 library('shinyvalidate')
 
 NUM_CELLS <- 200
+NUM_DATATABLE_ROWS <- 10
 
 
 server <- function(input, output, session) {
@@ -20,7 +21,7 @@ server <- function(input, output, session) {
   }
   lat_in_bounds <- function(lat) { return(check_in_bounds(lat, as.numeric(input$longitude))) }
   lon_in_bounds <- function(lon) { return(check_in_bounds(as.numeric(input$latitude), lon)) }
-
+  
   data <- ensure_data()
   shp_canada <- data$SHP_CANADA
   tif_fbp <- data$TIF_FBP_AGG
@@ -97,6 +98,7 @@ server <- function(input, output, session) {
       date_start <- make_date(init$yr, init$mon, init$day)
       tz <- tz_offset(date_start, timezone)$utc_offset_h
       wx <- hFWI(wx, tz)
+      session$userData$wx <- wx
       weather <- copy(wx)
       col_precision <- list(lat=3, long=3)
       for (col in names(weather)) {
@@ -105,9 +107,24 @@ server <- function(input, output, session) {
           weather[[col]] <- round(weather[[col]], precision)
         }
       }
-      output$weather <- DT::renderDT(weather,
-                                     options=list(dom='t', scrollX=TRUE),
-                                     rownames=FALSE)
+      num_pages <- nrow(weather) / NUM_DATATABLE_ROWS
+      session$userData$num_pages <- num_pages
+      updateSelectInput(inputId='page', choices=(1:num_pages), selected=1)
+      output$weather <- DT::renderDT(
+        weather,
+        callback = JS(c(
+          "$('#page').on('change', function(){",
+          "  table.page(parseInt($('#page').val()) - 1).draw('page');",
+          "});"
+        )),
+        options=list(
+          dom='t',
+          scrollX=TRUE,
+          pageLength=NUM_DATATABLE_ROWS
+        ),
+        server=FALSE,
+        rownames=FALSE
+      )
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
@@ -158,7 +175,7 @@ server <- function(input, output, session) {
   observeEvent(input$longitude, { fakeClick() })
   session$userData$latitude <- NULL
   session$userData$longitude <- NULL
-
+  
   iv <- InputValidator$new()
   iv$add_rule('latitude',
               compose_rules(
@@ -177,4 +194,16 @@ server <- function(input, output, session) {
               )
   )
   iv$enable()
+  
+  observeEvent(input$prev_page, {
+    updateSelectInput(session, 'page', selected=as.numeric(input$page) - 1)
+  })
+  observeEvent(input$next_page, {
+    updateSelectInput(session, 'page', selected=as.numeric(input$page) + 1)
+  })
+  observeEvent(input$page, {
+    page <- tryCatch(as.numeric(input$page), error=function(e) { NULL })
+    shinyjs::toggleState('prev_page', (!is.null(page) && page > 1))
+    shinyjs::toggleState('next_page', (!is.null(page) && page < session$userData$num_pages))
+  })
 }
