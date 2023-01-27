@@ -7,6 +7,12 @@ NUM_CELLS <- 200
 NUM_DATATABLE_ROWS <- 10
 
 server <- function(input, output, session) {
+  # Just use world values (m) for now
+  ELEV_MIN <- -500
+  ELEV_MAX <- 9000
+  ELEV_BREAKS <- 100
+  ELEV_BINS <- (ELEV_MAX - ELEV_MIN) / ELEV_BREAKS
+  COLOURS_ELEV <- colorBin(colorRampPalette(c('white', 'black'))(ELEV_BINS), domain=c(ELEV_MIN, ELEV_MAX), bins=ELEV_BINS)
   updateSimulationTimeSlider <- function(value=NULL, wx=NULL) {
     if (is.na(tryCatch(as.numeric(input$duration), error={ NA }))) {
       return()
@@ -106,7 +112,8 @@ server <- function(input, output, session) {
                      layerId='FBP',
                      group='FBP') %>%
       addLayersControl(
-        baseGroups = c("Default Maptile", "Satellite Maptile"),
+        baseGroups=c('Default Maptile', 'Satellite Maptile'),
+        overlayGroups=c('FBP'),
         options = layersControlOptions(collapsed = TRUE)
       ) %>%
       addPolygons(data=shp_canada,
@@ -137,9 +144,8 @@ server <- function(input, output, session) {
     fbp_orig <- data$TIF_FBP
     pt_proj <- st_transform(pt, crs(fbp_orig))
     b <- st_bbox(pt_proj)
-    b_orig <- st_bbox(fbp_orig)
-    dist <- NUM_CELLS * ((b_orig$xmax - b_orig$xmin) / ncol(fbp_orig))
-    box <- ext(c(b$xmin - dist / 2, b$xmax + dist / 2, b$ymin - dist / 2, b$ymax + dist / 2))
+    dist <- NUM_CELLS * res(fbp_orig)
+    box <- ext(c(b$xmin - dist[1] / 2, b$xmax + dist[1] / 2, b$ymin - dist[2] / 2, b$ymax + dist[2] / 2))
     clipped <- tryCatch(crop(fbp_orig, box), error=function(e) { NULL })
     if (is.null(clipped)) {
       return()
@@ -188,18 +194,30 @@ server <- function(input, output, session) {
         server=FALSE,
         rownames=FALSE
       )
+      tif_elev <- get_elevation(clipped)
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
       output$map_zoom <- renderLeaflet({
         m <- leaflet() %>%
+          addRasterImage(x=tif_elev,
+                         project=FALSE,
+                         colors=COLOURS_ELEV,
+                         opacity=1,
+                         layerId='Elevation',
+                         group='Elevation') %>%
           addRasterImage(x=clipped,
                          project=FALSE,
                          colors=colours_fbp,
                          opacity=0.5,
                          layerId='FBP',
                          group='FBP') %>%
+          addLayersControl(
+            baseGroups=c('Elevation'),
+            overlayGroups=c('FBP'),
+            options = layersControlOptions(collapsed = TRUE)
+          ) %>%
           fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
           addMarkers(data=pt,
                      layerId='origin',

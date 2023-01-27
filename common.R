@@ -5,6 +5,7 @@ library('dplyr')
 library('leaflet')
 library('XML')
 library('data.table')
+library('elevatr')
 
 # from example at https://github.com/rstudio/leaflet/blob/main/inst/examples/icons.R#L25-L40
 # use point symbols from base R graphics as icons
@@ -24,6 +25,38 @@ pchIcons <- function(pch = 0:14, width = 30, height = 30, ...) {
   files
 }
 
+# as per https://github.com/tilezen/joerd/blob/master/docs/data-sources.md#what-is-the-ground-resolution
+ground_resolution <- function(latitude, z) {
+  (cos(latitude * pi / 180) * 2 * pi * 6378137) / (256 * 2 ** z)
+}
+
+determine_zoom <- function(r) {
+  center <- crds(r)[nrow(r) * ncol(r) / 2,]
+  pt <- st_as_sf(data.frame(x=center[1], y=center[2]), coords=c('x', 'y'), crs=crs(r))
+  pt_proj <- st_transform(pt, 'WGS84')
+  xy <- st_coordinates(pt_proj)
+  latitude <- xy[2]
+  longitude <- xy[1]
+  target <- min(res(r))
+  resolutions <- ground_resolution(latitude, 0:15)
+  # find ratios between r's resolution and zoom level pixels
+  ratios <- resolutions / target
+  # HACK: pick a the zoom level closest to r's resolution
+  z <- which(as.integer(ratios) == 0)[[1]]
+  # -1 because zoom is 0 indexed and lists are 1 indexed
+  return(z - 1)
+}
+
+get_elevation <- function(r) {
+  stopifnot(inherits(r, 'SpatRaster'))
+  locations <- raster::raster(r)
+  # # zoom in a couple levels level so hopefully resample is closer to being right
+  # z <- determine_zoom(r) + 2
+  # just make it fast for now
+  z <- determine_zoom(r)
+  e <- get_elev_raster(locations, z)
+  return(resample(e, locations))
+}
 
 ensure_data <- function(dir_data='./data_input/') {
   dir_download <- paste0(dir_data, 'download/')
