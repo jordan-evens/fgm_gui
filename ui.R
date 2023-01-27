@@ -15,7 +15,8 @@ ui <- fillPage(
       HTML("<title>FGM Playground</title>"),
       tags$style(
         '.alignRight { float: right; }',
-        '.alignLeft { float: left; }'
+        '.alignLeft { float: left; }',
+        'th, td { white-space: nowrap; overflow: hidden; }'
       )),
     useShinyjs(),
     fluidRow(

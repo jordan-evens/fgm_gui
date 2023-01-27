@@ -100,7 +100,12 @@ server <- function(input, output, session) {
       wx <- hFWI(wx, tz)
       session$userData$wx <- wx
       weather <- copy(wx)
-      col_precision <- list(lat=3, long=3)
+      weather[, datetime := make_datetime(yr, mon, day, hr, 0, tz=timezone)]
+      weather <- weather[, -c('lat', 'long', 'yr', 'mon', 'day', 'hr', 'MIN_RH', 'SUNLIGHT_HOURS')]
+      names(weather) <- toupper(names(weather))
+      cols <- c('DATETIME', setdiff(names(weather), c('DATETIME')))
+      weather <- weather[, ..cols]
+      col_precision <- list(LAT=3, LONG=3)
       for (col in names(weather)) {
         if (is.numeric(weather[[col]])) {
           precision <- ifelse(col %in% names(col_precision), col_precision[[col]], 1)
@@ -110,15 +115,21 @@ server <- function(input, output, session) {
       num_pages <- nrow(weather) / NUM_DATATABLE_ROWS
       session$userData$num_pages <- num_pages
       updateSelectInput(inputId='page', choices=(1:num_pages), selected=1)
+      # HACK: can't figure out how to use format string in renderDT
+      weather$DATETIME <- format(weather$DATETIME, '%Y-%m-%d %H:%M %Z')
       output$weather <- DT::renderDT(
         weather,
         callback = JS(c(
+          # HACK: doesn't seem to work if done right away
+          "setTimeout(function() { table.columns.adjust().draw('page'); }, 10);",
           "$('#page').on('change', function(){",
           "  table.page(parseInt($('#page').val()) - 1).draw('page');",
           "});"
         )),
         options=list(
           dom='t',
+          autoWidth=TRUE,
+          columnDefs=list(list(targets=0, width='9.5em')),
           scrollX=TRUE,
           pageLength=NUM_DATATABLE_ROWS
         ),
