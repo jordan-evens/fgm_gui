@@ -104,3 +104,14 @@ ensure_data <- function(dir_data='./data_input/') {
               TIF_FBP_AGG=tif_fbp_agg,
               COLOURS_FBP=fct_palette))
 }
+
+check_in_bounds <- function(r, lat, lon) {
+  return(tryCatch({
+    print(sprintf('lat: %s, lon: %s', lat, lon))
+    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+    print(pt)
+    pt_proj <- st_transform(pt, crs(r))
+    return(!is.na(extract(r, pt_proj)[names(r)[[1]]]))
+  },
+  error=function(e) { FALSE }))
+}

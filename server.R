@@ -7,21 +7,9 @@ NUM_CELLS <- 200
 NUM_DATATABLE_ROWS <- 10
 
 server <- function(input, output, session) {
-  check_in_bounds <- function(lat, lon) {
-    return(tryCatch({
-      print(sprintf('lat: %s, lon: %s', lat, lon))
-      pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
-      print(pt)
-      fbp_orig <- data$TIF_FBP
-      pt_proj <- st_transform(pt, crs(fbp_orig))
-      return(!is.na(extract(fbp_orig, pt_proj)[names(fbp_orig)[[1]]]))
-    },
-    error=function(e) { FALSE }))
-  }
-  lat_in_bounds <- function(lat) { return(check_in_bounds(lat, as.numeric(input$longitude))) }
-  lon_in_bounds <- function(lon) { return(check_in_bounds(as.numeric(input$latitude), lon)) }
-  
   data <- ensure_data()
+  lat_in_bounds <- function(lat) { return(check_in_bounds(data$TIF_FBP, lat, as.numeric(input$longitude))) }
+  lon_in_bounds <- function(lon) { return(check_in_bounds(data$TIF_FBP, as.numeric(input$latitude), lon)) }
   shp_canada <- data$SHP_CANADA
   tif_fbp <- data$TIF_FBP_AGG
   tif_fbp <- raster::raster(tif_fbp)
@@ -67,7 +55,7 @@ server <- function(input, output, session) {
          (isTRUE(all.equal(session$userData$latitude, lat)) && isTRUE(all.equal(session$userData$longitude, lon))))) {
       return()
     }
-    if (!check_in_bounds(lat, lon)) {
+    if (!check_in_bounds(data$TIF_FBP, lat, lon)) {
       return()
     }
     pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
