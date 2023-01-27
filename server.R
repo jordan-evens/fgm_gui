@@ -58,14 +58,16 @@ server <- function(input, output, session) {
   handleClick <- function(event) {
     # event <- list(lat=48.67645, lng=-88.6908)
     leafletProxy("map") %>% clearPopups()
-    if (is.null(event) ||
-        (!is.null(session$userData$latitude) &&
-         !is.null(session$userData$longitude) &&
-         (session$userData$latitude == event$lat && session$userData$longitude == event$lng))) {
+    if (is.null(event)) {
       return()
     }
     lat <- as.numeric(event$lat)
     lon <- as.numeric(event$lng)
+    if ((!is.null(session$userData$latitude) &&
+         !is.null(session$userData$longitude) &&
+         (isTRUE(all.equal(session$userData$latitude, lat)) && isTRUE(all.equal(session$userData$longitude, lon))))) {
+      return()
+    }
     if (!check_in_bounds(lat, lon)) {
       return()
     }
