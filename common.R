@@ -5,6 +5,8 @@ library('dplyr')
 library('leaflet')
 library('XML')
 library('data.table')
+# required for elevatr
+library('progress')
 library('elevatr')
 
 # from example at https://github.com/rstudio/leaflet/blob/main/inst/examples/icons.R#L25-L40

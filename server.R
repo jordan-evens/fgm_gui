@@ -7,12 +7,14 @@ NUM_CELLS <- 200
 NUM_DATATABLE_ROWS <- 10
 
 server <- function(input, output, session) {
+  makeRamp <- function(colours, value_min, value_max, breaks) {
+    bins <- (value_max - value_min) / breaks
+    return(colorBin(colorRampPalette(colours)(bins), domain=c(value_min, value_max), bins=bins))
+  }
   # Just use world values (m) for now
-  ELEV_MIN <- -500
-  ELEV_MAX <- 9000
-  ELEV_BREAKS <- 100
-  ELEV_BINS <- (ELEV_MAX - ELEV_MIN) / ELEV_BREAKS
-  COLOURS_ELEV <- colorBin(colorRampPalette(c('white', 'black'))(ELEV_BINS), domain=c(ELEV_MIN, ELEV_MAX), bins=ELEV_BINS)
+  COLOURS_ELEV <- makeRamp(c('white', 'black'), -500, 9000, 100)
+  COLOURS_SLOPE <- makeRamp(c('white', 'red'), 0, 300, 10)
+  COLOURS_ASPECT <- makeRamp(c('white', 'red', 'black', 'blue', 'white'), 0, 360, 10)
   updateSimulationTimeSlider <- function(value=NULL, wx=NULL) {
     if (is.na(tryCatch(as.numeric(input$duration), error={ NA }))) {
       return()
@@ -45,9 +47,14 @@ server <- function(input, output, session) {
     lat <- as.numeric(input$latitude)
     lon <- as.numeric(input$longitude)
     fueltype <- 'C2'
-    # FIX: no slope or aspect yet
-    slope <- 0
-    aspect <- 0
+    tif_elev <- session$userData$elev
+    tif_slope_percent <- session$userData$slope_percent
+    tif_aspect_degrees <- session$userData$aspect_degrees
+    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+    pt_proj <- st_transform(pt, crs(tif_elev))
+    elevation <- extract(tif_elev, pt_proj)
+    slope <- extract(tif_slope_percent, pt_proj)
+    aspect <- extract(tif_aspect_degrees, pt_proj)
     
     
     df <- wx[DATETIME == startTime,]
@@ -55,6 +62,7 @@ server <- function(input, output, session) {
     df$LONG <- lon
     df$DJ <- lubridate::yday(startTime)
     df$FUELTYPE <- fueltype
+    df$ELEV <- elevation
     df$SLOPE <- slope
     df$ASPECT <- aspect
     
@@ -195,12 +203,35 @@ server <- function(input, output, session) {
         rownames=FALSE
       )
       tif_elev <- get_elevation(clipped)
+      tif_slope_percent <- tan(terrain(tif_elev, v='slope', unit='radians')) * 100
+      tif_aspect_degrees <- terrain(tif_elev, v='aspect', unit='degrees')
+      session$userData$elev <- tif_elev
+      session$userData$slope_percent <- tif_slope_percent
+      session$userData$aspect_degrees <- tif_aspect_degrees
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
       output$map_zoom <- renderLeaflet({
         m <- leaflet() %>%
+          addRasterImage(x=tif_elev,
+                         project=FALSE,
+                         colors=COLOURS_ELEV,
+                         opacity=1,
+                         layerId='Elevation',
+                         group='Elevation') %>%
+          addRasterImage(x=tif_slope_percent,
+                         project=FALSE,
+                         colors=COLOURS_SLOPE,
+                         opacity=1,
+                         layerId='Slope',
+                         group='Slope') %>%
+          addRasterImage(x=tif_aspect_degrees,
+                         project=FALSE,
+                         colors=COLOURS_ASPECT,
+                         opacity=1,
+                         layerId='Aspect',
+                         group='Aspect') %>%
           addRasterImage(x=tif_elev,
                          project=FALSE,
                          colors=COLOURS_ELEV,
@@ -214,7 +245,7 @@ server <- function(input, output, session) {
                          layerId='FBP',
                          group='FBP') %>%
           addLayersControl(
-            baseGroups=c('Elevation'),
+            baseGroups=c('Elevation', 'Slope', 'Aspect'),
             overlayGroups=c('FBP'),
             options = layersControlOptions(collapsed = TRUE)
           ) %>%
