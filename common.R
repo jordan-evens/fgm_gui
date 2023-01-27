@@ -127,17 +127,22 @@ ensure_data <- function(dir_data='./data_input/') {
   fbp_style <- XML::xmlParse(file_style_fbp)
   fbp_colours <- xmlElementsByTagName(xmlRoot(fbp_style), 'paletteEntry', recursive=TRUE)
   names(fbp_colours) <- NULL
-  fct_colours <- function(x) {
-    r <- list()
-    r[as.character(xmlGetAttr(x, 'value'))] <- xmlGetAttr(x, 'color')
-    return(r)
+  fct_fbp_lookup <- function (field) {
+    fct_colours <- function(x) {
+      r <- list()
+      r[as.character(xmlGetAttr(x, 'value'))] <- xmlGetAttr(x, field)
+      return(r)
+    }
+    fbp_pairs <- unlist(lapply(fbp_colours, fct_colours))
+    return(function(v) { fbp_pairs[as.character(v)] })
   }
-  fbp_pairs <- unlist(lapply(fbp_colours, fct_colours))
-  fct_palette <- function(v) { fbp_pairs[as.character(v)] }
+  fct_palette <- fct_fbp_lookup('color')
+  fct_name <- fct_fbp_lookup('label')
   return(list(SHP_CANADA=shp_canada,
               TIF_FBP=proj_fbp,
               TIF_FBP_AGG=tif_fbp_agg,
-              COLOURS_FBP=fct_palette))
+              COLOURS_FBP=fct_palette,
+              NAMES_FBP=fct_name))
 }
 
 check_in_bounds <- function(r, lat, lon) {

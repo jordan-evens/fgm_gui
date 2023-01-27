@@ -46,12 +46,14 @@ server <- function(input, output, session) {
     }
     lat <- as.numeric(input$latitude)
     lon <- as.numeric(input$longitude)
-    fueltype <- 'C2'
     tif_elev <- session$userData$elev
     tif_slope_percent <- session$userData$slope_percent
     tif_aspect_degrees <- session$userData$aspect_degrees
     pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
     pt_proj <- st_transform(pt, crs(tif_elev))
+    fueltype <- data$NAMES_FBP(extract(tif_fbp, pt_proj))
+    # HACK: simplify for now
+    fueltype <- substr(fueltype, 1, 3)
     elevation <- extract(tif_elev, pt_proj)
     slope <- extract(tif_slope_percent, pt_proj)
     aspect <- extract(tif_aspect_degrees, pt_proj)
