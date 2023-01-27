@@ -38,6 +38,7 @@ server <- function(input, output, session) {
     }
     lat <- as.numeric(input$latitude)
     lon <- as.numeric(input$longitude)
+    fueltype <- 'C2'
     # FIX: no slope or aspect yet
     slope <- 0
     aspect <- 0
@@ -47,11 +48,14 @@ server <- function(input, output, session) {
     df$LAT <- lat
     df$LONG <- lon
     df$DJ <- lubridate::yday(startTime)
-    df$FUELTYPE <- 'C2'
+    df$FUELTYPE <- fueltype
     df$SLOPE <- slope
     df$ASPECT <- aspect
     
     df <- data.table(cffdrs::fbp(df, output='ALL'))
+    df$FUELTYPE <- fueltype
+    df$SLOPE <- slope
+    df$ASPECT <- aspect
     df$DATETIME <- startTime
     col_precision <- list(LAT=3, LONG=3)
     for (col in names(df)) {
@@ -62,7 +66,8 @@ server <- function(input, output, session) {
     }
     # HACK: can't figure out how to use format string in renderDT
     df$DATETIME <- format(df$DATETIME, '%Y-%m-%d %H:%M %Z')
-    cols <- c('DATETIME', setdiff(names(df), c('DATETIME')))
+    START_COLS <- c('DATETIME', 'FUELTYPE', 'SLOPE', 'ASPECT')
+    cols <- c(START_COLS, setdiff(names(df), START_COLS))
     df <- df[, ..cols]
     output$fbp_origin <- DT::renderDT(
       df,
