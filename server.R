@@ -1,11 +1,10 @@
 source('common.R')
-library('lutz')
+source('weather.R')
 library('DT')
 library('shinyvalidate')
 
 NUM_CELLS <- 200
 NUM_DATATABLE_ROWS <- 10
-
 
 server <- function(input, output, session) {
   check_in_bounds <- function(lat, lon) {
@@ -92,21 +91,9 @@ server <- function(input, output, session) {
       session$userData$clipped <- clipped
       session$userData$latitude <- lat
       session$userData$longitude <- lon
-      wx <- data.table(read.csv('./cffdrs-ng/test_hffmc.csv'))
-      wx$lat <- lat
-      wx$long <- lon
-      timezone <- lutz::tz_lookup_coords(lat, lon)
-      init <- wx[1,]
-      date_start <- make_date(init$yr, init$mon, init$day)
-      tz <- tz_offset(date_start, timezone)$utc_offset_h
-      wx <- hFWI(wx, tz)
+      wx <- get_weather(lat, lon)
       session$userData$wx <- wx
       weather <- copy(wx)
-      weather[, datetime := make_datetime(yr, mon, day, hr, 0, tz=timezone)]
-      weather <- weather[, -c('lat', 'long', 'yr', 'mon', 'day', 'hr', 'MIN_RH', 'SUNLIGHT_HOURS')]
-      names(weather) <- toupper(names(weather))
-      cols <- c('DATETIME', setdiff(names(weather), c('DATETIME')))
-      weather <- weather[, ..cols]
       col_precision <- list(LAT=3, LONG=3)
       for (col in names(weather)) {
         if (is.numeric(weather[[col]])) {
