@@ -15,6 +15,7 @@ DEFAULT_LATITUDE <- 50
 DEFAULT_LONGITUDE <- -96
 
 wx <- get_weather(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
+timezone <- tz_offset(wx$DATETIME[[1]], tz(wx$DATETIME))$utc_offset_h * 60
 
 ui <- fillPage(
   useShinyjs(),
@@ -47,8 +48,10 @@ ui <- fillPage(
                                       value=min(wx$DATETIME) + hours(10),
                                       min=min(wx$DATETIME),
                                       max=max(wx$DATETIME) - hours(ceiling(DEFAULT_DURATION / 60)),
-                                      step=hours(1))
-                        )))
+                                      step=hours(1),
+                                      timezone=timezone)
+                        ),
+                        withSpinner(DT::DTOutput('fbp_origin'))))
       ),
       column(4,
              hidden(div(id='div_info',

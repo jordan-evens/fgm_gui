@@ -20,11 +20,62 @@ server <- function(input, output, session) {
     value_min <- min(wx$DATETIME)
     value_max <- max(wx$DATETIME) - hours(ceiling(input$duration / 60))
     value <- max(min(value, value_max), value_min)
+    timezone <- timezone <- tz_offset(value, tz(value))$utc_offset_h * 60
     updateSliderInput(session=session,
                       'startTime',
                       value=value,
                       min=value_min,
-                      max=value_max)
+                      max=value_max,
+                      timezone=timezone)
+    updateFBPOriginTable(startTime=value)
+  }
+  updateFBPOriginTable <- function(startTime=NULL, wx=NULL) {
+    if (is.null(wx)) {
+      wx <- session$userData$wx
+    }
+    if (is.null(startTime)) {
+      startTime <- as_datetime(input$startTime, tz=tz(wx$DATETIME))
+    }
+    lat <- as.numeric(input$latitude)
+    lon <- as.numeric(input$longitude)
+    # FIX: no slope or aspect yet
+    slope <- 0
+    aspect <- 0
+    
+    
+    df <- wx[DATETIME == startTime,]
+    df$LAT <- lat
+    df$LONG <- lon
+    df$DJ <- lubridate::yday(startTime)
+    df$FUELTYPE <- 'C2'
+    df$SLOPE <- slope
+    df$ASPECT <- aspect
+    
+    df <- data.table(cffdrs::fbp(df, output='ALL'))
+    df$DATETIME <- startTime
+    col_precision <- list(LAT=3, LONG=3)
+    for (col in names(df)) {
+      if (is.numeric(df[[col]])) {
+        precision <- ifelse(col %in% names(col_precision), col_precision[[col]], 1)
+        df[[col]] <- round(df[[col]], precision)
+      }
+    }
+    # HACK: can't figure out how to use format string in renderDT
+    df$DATETIME <- format(df$DATETIME, '%Y-%m-%d %H:%M %Z')
+    cols <- c('DATETIME', setdiff(names(df), c('DATETIME')))
+    df <- df[, ..cols]
+    output$fbp_origin <- DT::renderDT(
+      df,
+      options=list(
+        dom='t',
+        autoWidth=TRUE,
+        columnDefs=list(list(targets=0, width='9.5em')),
+        scrollX=TRUE,
+        paging=FALSE
+      ),
+      server=FALSE,
+      rownames=FALSE
+    )
   }
   data <- ensure_data()
   lat_in_bounds <- function(lat) { return(check_in_bounds(data$TIF_FBP, lat, as.numeric(input$longitude))) }
@@ -100,7 +151,6 @@ server <- function(input, output, session) {
       session$userData$longitude <- lon
       wx <- get_weather(lat, lon)
       session$userData$wx <- wx
-      updateSimulationTimeSlider(min(wx$DATETIME) + hours(10))
       weather <- copy(wx)
       col_precision <- list(LAT=3, LONG=3)
       for (col in names(weather)) {
@@ -154,6 +204,7 @@ server <- function(input, output, session) {
         addMarkers(data=pt,
                    layerId='origin',
                    icon=icon_origin)
+      updateSimulationTimeSlider(min(wx$DATETIME) + hours(10))
     }
     return(event)
   }
@@ -220,9 +271,12 @@ server <- function(input, output, session) {
     shinyjs::delay(100, {
       shinyjs::show('div_info')
       shinyjs::show('div_sim')
-      })
+    })
   })
   observeEvent(input$duration, {
     updateSimulationTimeSlider()
+  })
+  observeEvent(input$startTime, {
+    updateFBPOriginTable()
   })
 }
