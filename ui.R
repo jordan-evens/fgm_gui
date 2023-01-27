@@ -1,3 +1,5 @@
+source('weather.R')
+
 library(shiny)
 library(leaflet)
 library(dplyr)
@@ -7,6 +9,12 @@ library(plotly)
 library(htmltools)
 library(DT)
 library(shinyjs)
+
+DEFAULT_DURATION <- 60
+DEFAULT_LATITUDE <- 50
+DEFAULT_LONGITUDE <- -96
+
+wx <- get_weather(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
 
 ui <- fillPage(
   useShinyjs(),
@@ -28,12 +36,25 @@ ui <- fillPage(
       )
     ),
     fluidRow(
-      column(8, div()),
+      column(8,
+             hidden(div(id='div_sim',
+                        style='padding: 10px;',
+                        h4('Simulation'),
+                        fluidRow(
+                          numericInput('duration', label='Duration (min)', value=DEFAULT_DURATION, step=1, min=1, max=3600),
+                          sliderInput('startTime',
+                                      'Start time',
+                                      value=min(wx$DATETIME) + hours(10),
+                                      min=min(wx$DATETIME),
+                                      max=max(wx$DATETIME) - hours(ceiling(DEFAULT_DURATION / 60)),
+                                      step=hours(1))
+                        )))
+      ),
       column(4,
              hidden(div(id='div_info',
                         fluidRow(
-                          column(6, numericInput('latitude', label='latitude', value=50)),
-                          column(6, numericInput('longitude', label='longitude', value=-96))
+                          column(6, numericInput('latitude', label='latitude', value=DEFAULT_LATITUDE)),
+                          column(6, numericInput('longitude', label='longitude', value=DEFAULT_LONGITUDE))
                         ),
                         column(12,
                                style='border: 1px solid #DDDDDD;',

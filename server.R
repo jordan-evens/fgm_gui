@@ -7,6 +7,25 @@ NUM_CELLS <- 200
 NUM_DATATABLE_ROWS <- 10
 
 server <- function(input, output, session) {
+  updateSimulationTimeSlider <- function(value=NULL, wx=NULL) {
+    if (is.na(tryCatch(as.numeric(input$duration), error={ NA }))) {
+      return()
+    }
+    if (is.null(wx)) {
+      wx <- session$userData$wx
+    }
+    if (is.null(value)) {
+      value <- as_datetime(input$startTime, tz=tz(wx$DATETIME))
+    }
+    value_min <- min(wx$DATETIME)
+    value_max <- max(wx$DATETIME) - hours(ceiling(input$duration / 60))
+    value <- max(min(value, value_max), value_min)
+    updateSliderInput(session=session,
+                      'startTime',
+                      value=value,
+                      min=value_min,
+                      max=value_max)
+  }
   data <- ensure_data()
   lat_in_bounds <- function(lat) { return(check_in_bounds(data$TIF_FBP, lat, as.numeric(input$longitude))) }
   lon_in_bounds <- function(lon) { return(check_in_bounds(data$TIF_FBP, as.numeric(input$latitude), lon)) }
@@ -81,6 +100,7 @@ server <- function(input, output, session) {
       session$userData$longitude <- lon
       wx <- get_weather(lat, lon)
       session$userData$wx <- wx
+      updateSimulationTimeSlider(min(wx$DATETIME) + hours(10))
       weather <- copy(wx)
       col_precision <- list(LAT=3, LONG=3)
       for (col in names(weather)) {
@@ -180,6 +200,11 @@ server <- function(input, output, session) {
                 ~ if (!lon_in_bounds(.)) 'Coordinates must be within FBP raster'
               )
   )
+  iv$add_rule('duration',
+              compose_rules(
+                sv_required(),
+                sv_numeric()
+              ))
   iv$enable()
   
   observeEvent(input$prev_page, {
@@ -192,6 +217,12 @@ server <- function(input, output, session) {
     page <- tryCatch(as.numeric(input$page), error=function(e) { NULL })
     shinyjs::toggleState('prev_page', (!is.null(page) && page > 1))
     shinyjs::toggleState('next_page', (!is.null(page) && page < session$userData$num_pages))
-    shinyjs::delay(100, { shinyjs::show('div_info') })
+    shinyjs::delay(100, {
+      shinyjs::show('div_info')
+      shinyjs::show('div_sim')
+      })
+  })
+  observeEvent(input$duration, {
+    updateSimulationTimeSlider()
   })
 }
