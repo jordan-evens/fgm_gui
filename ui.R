@@ -46,7 +46,7 @@ ui <- fillPage(
                                    column(3, actionButton('next_page', '>', class='alignLeft'), style='padding-left: 0px;')
                                  )
                                ),
-                               DT::DTOutput("weather")
+                               withSpinner(DT::DTOutput("weather"))
                         )
              ))
       )

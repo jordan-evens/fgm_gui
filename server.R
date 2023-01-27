@@ -139,7 +139,6 @@ server <- function(input, output, session) {
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
-      shinyjs::show('div_info')
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
       output$map_zoom <- renderLeaflet({
         m <- leaflet() %>%
@@ -216,5 +215,6 @@ server <- function(input, output, session) {
     page <- tryCatch(as.numeric(input$page), error=function(e) { NULL })
     shinyjs::toggleState('prev_page', (!is.null(page) && page > 1))
     shinyjs::toggleState('next_page', (!is.null(page) && page < session$userData$num_pages))
+    shinyjs::delay(100, { shinyjs::show('div_info') })
   })
 }
