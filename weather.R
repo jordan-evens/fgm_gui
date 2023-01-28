@@ -25,6 +25,8 @@ get_weather <- function(lat, lon, init=list(ffmc=85, dmc=15, dc=6, percent_cured
   date_start <- make_date(day1$YR, day1$MON, day1$DAY)
   tz <- tz_offset(date_start, timezone)$utc_offset_h
   wx <- hFWI(wx, tz, ffmc_old=init$ffmc, dmc_old=init$dmc, dc_old=init$dc, percent_cured=init$percent_cured)
+  # HACK: try to minimize memory usage
+  gc()
   wx[, DATETIME := make_datetime(YR, MON, DAY, HR, 0, tz=timezone)]
   wx <- wx[, -c('LAT', 'LONG', 'YR', 'MON', 'DAY', 'HR', 'MIN_RH', 'SUNLIGHT_HOURS')]
   cols <- c('DATETIME', setdiff(names(wx), c('DATETIME')))

@@ -205,8 +205,10 @@ server <- function(input, output, session) {
         rownames=FALSE
       )
       tif_elev <- get_elevation(clipped)
-      tif_slope_percent <- tan(terrain(tif_elev, v='slope', unit='radians')) * 100
-      tif_aspect_degrees <- terrain(tif_elev, v='aspect', unit='degrees')
+      # HACK: try to minimize memory usage
+      gc()
+      tif_slope_percent <- as.integer(tan(terrain(tif_elev, v='slope', unit='radians')) * 100)
+      tif_aspect_degrees <- as.integer(terrain(tif_elev, v='aspect', unit='degrees'))
       session$userData$elev <- tif_elev
       session$userData$slope_percent <- tif_slope_percent
       session$userData$aspect_degrees <- tif_aspect_degrees
@@ -262,6 +264,8 @@ server <- function(input, output, session) {
                    icon=icon_origin)
       updateSimulationTimeSlider(min(wx$DATETIME) + hours(10))
     }
+    # HACK: try to minimize memory usage
+    gc()
     return(event)
   }
   observe({
