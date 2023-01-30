@@ -1,3 +1,4 @@
+source('common.R')
 source('weather.R')
 
 library(shiny)
@@ -26,6 +27,7 @@ ui <- fillPage(
       tags$style(
         '.alignRight { float: right; }',
         '.alignLeft { float: left; }',
+        '.versionFooter { position: fixed; float: left; bottom: 0.25em; left: 0.5em; font-size: .75em; color: #CCCCCC}',
         'th, td { white-space: nowrap; overflow: hidden; }'
       )),
     useShinyjs(),
@@ -75,6 +77,9 @@ ui <- fillPage(
                         )
              ))
       )
-    )
+    ),
+    div(id='version',
+        class='versionFooter',
+        get_version())
   )
 )

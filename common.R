@@ -157,3 +157,27 @@ check_in_bounds <- function(r, lat, lon) {
   },
   error=function(e) { FALSE }))
 }
+
+VERSION_HASH <- NULL
+get_version <- function() {
+  if (!is.null(VERSION_HASH)) {
+    return(VERSION_HASH)
+  }
+  return(tryCatch({
+    # # HACK: call this directly because importing it seems to cause errors
+    # tried using git2r, but doesn't work on shinyapps.io
+    # v <- git2r::last_commit()$sha
+    # want some kind of hash so we can know if things are the same even if the modified times aren't
+    code <- paste(sapply(sort(list.files(pattern='*.R$')), function (f) { paste(readLines(f), collapse='\n') }), collapse='\n')
+    v <- digest::digest(code, algo='md5')
+    v <- paste0('v_', substr(v, 1, 7))
+    # # check if files are modified and indicate if so
+    # if (0 < sum(sapply(git2r::status(), length))) {
+    #   v <- paste0(v, '+')
+    # }
+    # # just do last modified time
+    # v <- paste0('Last modified ', max(file.info(list.files())$mtime))
+    VERSION_HASH <<- v
+    return(v)
+  }, error=function (e) { '' }))
+}
