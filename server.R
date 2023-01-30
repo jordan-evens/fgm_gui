@@ -209,6 +209,8 @@ server <- function(input, output, session) {
       gc()
       tif_slope_percent <- as.integer(tan(terrain(tif_elev, v='slope', unit='radians')) * 100)
       tif_aspect_degrees <- as.integer(terrain(tif_elev, v='aspect', unit='degrees'))
+      # HACK: convert for leaflet
+      clipped <- raster::raster(clipped)
       session$userData$elev <- tif_elev
       session$userData$slope_percent <- tif_slope_percent
       session$userData$aspect_degrees <- tif_aspect_degrees
@@ -236,12 +238,6 @@ server <- function(input, output, session) {
                          opacity=1,
                          layerId='Aspect',
                          group='Aspect') %>%
-          addRasterImage(x=tif_elev,
-                         project=FALSE,
-                         colors=COLOURS_ELEV,
-                         opacity=1,
-                         layerId='Elevation',
-                         group='Elevation') %>%
           addRasterImage(x=clipped,
                          project=FALSE,
                          colors=colours_fbp,
