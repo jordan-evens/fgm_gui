@@ -68,6 +68,8 @@ ensure_data <- function(dir_data='./data_input/') {
   canada <- 'http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gpr_000b11a_e.zip'
   fbp <- 'https://cwfis.cfs.nrcan.gc.ca/downloads/fuels/development/Canadian_Forest_FBP_Fuel_Types/Canadian_Forest_FBP_Fuel_Types_v20191114.zip'
   dir.create(dir_download, showWarnings=FALSE, recursive=TRUE)
+  dir.create(dir_extracted, showWarnings=FALSE, recursive=TRUE)
+  dir.create(dir_created, showWarnings=FALSE, recursive=TRUE)
   ensure_file <- function(url) {
     f <- paste0(dir_download, basename(url))
     if (!file.exists(f)) {
