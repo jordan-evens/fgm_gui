@@ -221,7 +221,7 @@ server <- function(input, output, session) {
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
-      bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=crs(clipped))), crs(pt))))
+      bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(clipped), crs=as.character(crs(clipped)))), crs(pt))))
       output$map_zoom <- renderLeaflet({
         m <- leaflet() %>%
           addRasterImage(x=tif_elev,
