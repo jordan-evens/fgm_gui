@@ -37,6 +37,38 @@ server <- function(input, output, session) {
                       timezone=timezone)
     updateFBPOriginTable(startTime=value)
   }
+  getCell <- function(lat, lon) {
+    cells <- session$userData$cells
+    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+    pt_proj <- st_transform(pt, crs(cells))
+    cell <- as.list(extract(cells, pt_proj)[1,])
+    fueltype <- data$NAMES_FBP(cell$fueltype)
+    # HACK: simplify for now
+    fueltype <- substr(fueltype, 1, 3)
+    return(list(fueltype=fueltype,
+                elevation=cell$elevation,
+                slope=cell$slope,
+                aspect=cell$aspect))
+  }
+  calcFBP <- function(wx, time, lat, lon) {
+    cell <- getCell(lat, lon)
+    
+    df <- wx[DATETIME == time,]
+    df$LAT <- lat
+    df$LONG <- lon
+    df$DJ <- lubridate::yday(time)
+    df$FUELTYPE <- cell$fueltype
+    df$ELEV <- cell$elevation
+    df$SLOPE <- cell$slope
+    df$ASPECT <- cell$aspect
+    
+    df <- data.table(cffdrs::fbp(df, output='ALL'))
+    df$FUELTYPE <- cell$fueltype
+    df$SLOPE <- cell$slope
+    df$ASPECT <- cell$aspect
+    df$DATETIME <- time
+    return(df)
+  }
   updateFBPOriginTable <- function(startTime=NULL, wx=NULL) {
     if (is.null(wx)) {
       wx <- session$userData$wx
@@ -46,33 +78,7 @@ server <- function(input, output, session) {
     }
     lat <- as.numeric(input$latitude)
     lon <- as.numeric(input$longitude)
-    tif_elev <- session$userData$elev
-    tif_slope_percent <- session$userData$slope_percent
-    tif_aspect_degrees <- session$userData$aspect_degrees
-    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
-    pt_proj <- st_transform(pt, crs(tif_elev))
-    fueltype <- data$NAMES_FBP(extract(tif_fbp, pt_proj))
-    # HACK: simplify for now
-    fueltype <- substr(fueltype, 1, 3)
-    elevation <- extract(tif_elev, pt_proj)
-    slope <- extract(tif_slope_percent, pt_proj)
-    aspect <- extract(tif_aspect_degrees, pt_proj)
-    
-    
-    df <- wx[DATETIME == startTime,]
-    df$LAT <- lat
-    df$LONG <- lon
-    df$DJ <- lubridate::yday(startTime)
-    df$FUELTYPE <- fueltype
-    df$ELEV <- elevation
-    df$SLOPE <- slope
-    df$ASPECT <- aspect
-    
-    df <- data.table(cffdrs::fbp(df, output='ALL'))
-    df$FUELTYPE <- fueltype
-    df$SLOPE <- slope
-    df$ASPECT <- aspect
-    df$DATETIME <- startTime
+    df <- calcFBP(wx, startTime, lat, lon)
     col_precision <- list(LAT=3, LONG=3)
     for (col in names(df)) {
       if (is.numeric(df[[col]])) {
@@ -167,7 +173,6 @@ server <- function(input, output, session) {
     if (!all(is.nan(minmax(clipped[[band]])))) {
       session$userData$pt_originj <- pt
       session$userData$pt_origin_proj <- pt_proj
-      session$userData$clipped <- clipped
       session$userData$latitude <- lat
       session$userData$longitude <- lon
       wx <- get_weather(lat, lon)
@@ -211,9 +216,8 @@ server <- function(input, output, session) {
       tif_aspect_degrees <- as.integer(terrain(tif_elev, v='aspect', unit='degrees'))
       # HACK: convert for leaflet
       clipped <- raster::raster(clipped)
-      session$userData$elev <- tif_elev
-      session$userData$slope_percent <- tif_slope_percent
-      session$userData$aspect_degrees <- tif_aspect_degrees
+      # NOTE: use integer for everything because that should be precise enough
+      session$userData$cells <- as.integer(raster::stack(list(fueltype=clipped, elevation=tif_elev, slope=tif_slope_percent, aspect=tif_aspect_degrees)))
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
