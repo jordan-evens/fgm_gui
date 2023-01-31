@@ -38,10 +38,10 @@ server <- function(input, output, session) {
     updateFBPOriginTable(startTime=value)
   }
   getCell <- function(lat, lon) {
-    cells <- session$userData$cells
+    landscape <- session$userData$landscape
     pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
-    pt_proj <- st_transform(pt, crs(cells))
-    cell <- as.list(extract(cells, pt_proj)[1,])
+    pt_proj <- st_transform(pt, crs(landscape))
+    cell <- as.list(extract(landscape, pt_proj)[1,])
     fueltype <- data$NAMES_FBP(cell$fueltype)
     # HACK: simplify for now
     fueltype <- substr(fueltype, 1, 3)
@@ -217,7 +217,7 @@ server <- function(input, output, session) {
       # HACK: convert for leaflet
       clipped <- raster::raster(clipped)
       # NOTE: use integer for everything because that should be precise enough
-      session$userData$cells <- as.integer(raster::stack(list(fueltype=clipped, elevation=tif_elev, slope=tif_slope_percent, aspect=tif_aspect_degrees)))
+      session$userData$landscape <- as.integer(raster::stack(list(fueltype=clipped, elevation=tif_elev, slope=tif_slope_percent, aspect=tif_aspect_degrees)))
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
