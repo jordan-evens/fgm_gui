@@ -14,8 +14,10 @@ library(shinyjs)
 DEFAULT_DURATION <- 60
 # DEFAULT_LATITUDE <- 50
 # DEFAULT_LONGITUDE <- -96
-DEFAULT_LATITUDE <- 51.2931978
-DEFAULT_LONGITUDE <- -117.3210066
+DEFAULT_LATITUDE <- 50.5
+DEFAULT_LONGITUDE <- -89
+# DEFAULT_LATITUDE <- 51.2931978
+# DEFAULT_LONGITUDE <- -117.3210066
 wx <- get_weather(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
 timezone <- tz_offset(wx$DATETIME[[1]], tz(wx$DATETIME))$utc_offset_h * 60
 
@@ -30,7 +32,6 @@ ui <- fillPage(
         '.versionFooter { position: fixed; float: left; bottom: 0.25em; left: 0.5em; font-size: .75em; color: #CCCCCC}',
         'th, td { white-space: nowrap; overflow: hidden; }'
       )),
-    useShinyjs(),
     fluidRow(
       column(8, withSpinner(leafletOutput("map"))),
       column(4,
@@ -54,7 +55,15 @@ ui <- fillPage(
                                       step=hours(1),
                                       timezone=timezone)
                         ),
-                        withSpinner(DT::DTOutput('fbp_origin'))))
+                        withSpinner(DT::DTOutput('fbp_origin')),
+                        fluidRow(
+                          disabled(textInput('simTime', 'Simulation Time')),
+                          actionButton('do_reset', 'Reset'),
+                          actionButton('do_step', 'Step')
+                        ),
+                        fluidRow(
+                          withSpinner(DT::DTOutput('points'))
+                        )))
       ),
       column(4,
              hidden(div(id='div_info',
