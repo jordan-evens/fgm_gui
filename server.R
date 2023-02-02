@@ -49,29 +49,37 @@ server <- function(input, output, session) {
     if (is.null(wx)) {
       wx <- session$userData$wx
       if (is.null(wx)) {
+        print('No weather so not updating fbp')
         return()
       }
     }
     if (is.null(startTime)) {
-      startTime <- as_datetime(input$startTime, tz=tz(wx$DATETIME))
+      # startTime <- as_datetime(input$startTime, tz=tz(wx$DATETIME))
+      startTime <- session$userData$startTime
       if (is.null(startTime)) {
+        print('No startTime, so not updating fbp')
         return()
       }
     }
-    lat <- as.numeric(input$latitude)
-    lon <- as.numeric(input$longitude)
+    # lat <- as.numeric(input$latitude)
+    # lon <- as.numeric(input$longitude)
+    lat <- session$userData$latitude
+    lon <- session$userData$longitude
     landscape <- session$userData$landscape
     if (is.null(lat) || is.null(lon) || is.null(landscape)) {
+      print('No lat/long or landscape, so not updating fbp')
       return()
     }
     print('Getting point')
     pt <- get_point(landscape, lat, lon)
     if (is.null(pt)) {
+      print('Could not get point, so not  updating fbp')
       return()
     }
     print('Getting cell')
     cell <- getCells(landscape, pt)
     if (is.null(cell)) {
+      print('Could not get cell, so not  updating fbp')
       return()
     }
     print('Calculating fbp')
@@ -110,7 +118,7 @@ server <- function(input, output, session) {
     # print(pts)
     if (!is.null(pts)) {
       # print('st_transform()')
-      pts_proj <- st_transform(pts, 'WGS84')
+      pts_proj <- st_transform(pts, PROJ_DEFAULT)
       # print(pts_proj)
       # pts_sp <- as(pts_proj, 'Spatial')
       # pts_map <- pts_sp
@@ -293,12 +301,20 @@ server <- function(input, output, session) {
          (isTRUE(all.equal(session$userData$latitude, lat)) && isTRUE(all.equal(session$userData$longitude, lon))))) {
       return()
     }
+    # # HACK: convert to raster crs and back so that we round to the same precision
+    # # (trying to get raster to pick correct cell for position)
+    # latlong_rounded <- round_pt_precision(lat, lon)
+    # # # is this even doing anything?
+    # # stopifnot(lon == as.double(latlong_rounded$lon))
+    # # stopifnot(lat == as.double(latlong_rounded$lat))
+    # lon <- as.double(latlong_rounded$lon)
+    # lat <- as.double(latlong_rounded$lat)
+    landscape_all <- createLandscape(lat, lon)
     session$userData$latitude <- lat
     session$userData$longitude <- lon
     wx <- get_weather(lat, lon)
     session$userData$wx <- wx
     updateWeather(wx)
-    landscape_all <- createLandscape(lat, lon)
     print('Got landscape')
     print(landscape_all)
     print('Checking landscape')
@@ -309,7 +325,7 @@ server <- function(input, output, session) {
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
-      bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(landscape), crs=as.character(crs(landscape)))), 'WGS84')))
+      bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(landscape), crs=as.character(crs(landscape)))), PROJ_DEFAULT)))
       print('Got bbox')
       print(landscape)
       print(landscape$elevation)
@@ -363,7 +379,8 @@ server <- function(input, output, session) {
       print('Showing wx')
       print(wx)
       print('Update slider')
-      updateSimulationTimeSlider(min(wx$DATETIME) + hours(10))
+      startTime <- min(wx$DATETIME) + hours(10)
+      updateSimulationTimeSlider(startTime)
     }
     print('Done initial load')
     # HACK: try to minimize memory usage

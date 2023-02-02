@@ -9,6 +9,9 @@ library('data.table')
 library('progress')
 library('elevatr')
 
+PROJ_MAP <- st_crs('EPSG:3857')
+PROJ_DEFAULT <- st_crs('WGS84')
+
 # from example at https://github.com/rstudio/leaflet/blob/main/inst/examples/icons.R#L25-L40
 # use point symbols from base R graphics as icons
 pchIcons <- function(pch = 0:14, width = 30, height = 30, ...) {
@@ -34,8 +37,8 @@ ground_resolution <- function(latitude, z) {
 
 determine_zoom <- function(r) {
   center <- crds(r)[nrow(r) * ncol(r) / 2,]
-  pt <- st_as_sf(data.frame(x=center[1], y=center[2]), coords=c('x', 'y'), crs=crs(r))
-  pt_proj <- st_transform(pt, 'WGS84')
+  pt <- st_as_sf(data.frame(x=center[1], y=center[2]), coords=c('x', 'y'), crs=st_crs(r))
+  pt_proj <- st_transform(pt, PROJ_DEFAULT)
   xy <- st_coordinates(pt_proj)
   latitude <- xy[2]
   longitude <- xy[1]
@@ -92,7 +95,7 @@ ensure_data <- function(dir_data='./data_input/') {
       flag_orig <- sf_use_s2()
       sf_use_s2(FALSE)
       shp_canada <- st_simplify(shp_canada, dTolerance=1000) %>%
-        sf::st_transform('+proj=longlat +datum=WGS84')
+        sf::st_transform(PROJ_DEFAULT)
       sf_use_s2(flag_orig)
       st_write(shp_canada, file_simple_canada)
     }
@@ -150,9 +153,9 @@ ensure_data <- function(dir_data='./data_input/') {
 check_in_bounds <- function(r, lat, lon) {
   return(tryCatch({
     print(sprintf('lat: %s, lon: %s', lat, lon))
-    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+    pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
     print(pt)
-    pt_proj <- st_transform(pt, crs(r))
+    pt_proj <- st_transform(pt, st_crs(r))
     return(!isTRUE(is.na(extract(r, pt_proj)[names(r)[[1]]])))
   },
   error=function(e) { FALSE }))

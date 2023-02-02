@@ -21,10 +21,22 @@ deg2rad <- function(theta) {
 }
 
 get_point <- function(landscape, lat, lon) {
-  pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+  pt <- st_as_sf(data.frame(longitude=lon, latitude=lat), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
   print('In get_point()')
-  pt_proj <- st_transform(pt, crs(landscape))
+  pt_proj <- st_transform(pt, st_crs(landscape))
   return(pt_proj)
+}
+
+round_pt_precision <- function(lat, lon) {
+  fbp_orig <- BASE_DATA$TIF_FBP
+  pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
+  pt_proj <- st_transform(pt, st_crs(fbp_orig))
+  pt_rounded <- st_transform(pt_proj, PROJ_DEFAULT)
+  xy <- st_coordinates(pt_rounded)[1,]
+  lon_rounded <- xy[1]
+  lat_rounded <- xy[2]
+  print(sprintf('Rounded (%f, %f) to (%f, %f)', lon, lat, lon_rounded, lat_rounded))
+  return(list(lon=lon_rounded, lat=lat_rounded))
 }
 
 createLandscape <- function(lat, lon) {
@@ -32,10 +44,10 @@ createLandscape <- function(lat, lon) {
   if (!check_in_bounds(tif_fbp, lat, lon)) {
     return()
   }
-  pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs='WGS84')
+  pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
   fbp_orig <- tif_fbp
   print('In createLandscape()')
-  pt_proj <- st_transform(pt, crs(fbp_orig))
+  pt_proj <- st_transform(pt, st_crs(fbp_orig))
   b <- st_bbox(pt_proj)
   dist <- NUM_CELLS * res(fbp_orig)
   box <- ext(c(b$xmin - dist[1] / 2, b$xmax + dist[1] / 2, b$ymin - dist[2] / 2, b$ymax + dist[2] / 2))
@@ -66,7 +78,7 @@ getCells <- function(landscape, pts) {
   print('In getCells()')
   print(pts)
   print('st_transform()')
-  pts_proj <- st_transform(pts, crs(landscape))
+  pts_proj <- st_transform(pts, st_crs(landscape))
   print(pts_proj)
   # cell <- as.list(extract(landscape, pt)[1,])
   # HACK: convert to SpatRaster to get cell number for now
@@ -282,7 +294,7 @@ spread <- function(landscape, wx) {
           # print('Applying offsets')
           xy_with_offsets <- list(X=xy[1] + dists$X, Y=xy[2] + dists$Y)
           # print(xy_with_offsets)
-          xy_pts <- st_as_sf(data.frame(xy_with_offsets), coords=c('X', 'Y'), crs=crs(landscape))
+          xy_pts <- st_as_sf(data.frame(xy_with_offsets), coords=c('X', 'Y'), crs=st_crs(landscape))
           points_new <- rbind(points_new, xy_pts)
         }
       }
