@@ -323,14 +323,18 @@ spread <- function(landscape, wx) {
     }
     # now we want to aggregate the points by cell
     # (m)
-    # HULL_DIST <- 30
+    HULL_DIST <- 10
     # hulled_pts <- NULL
     cells_new <- getCells(landscape, points_new)
     # throw out points that aren't in cells
     cells_new <- cells_new[!is.nan(CELL),]
     points_new <- points_new[cells_new$ID,]
     points_new$CELL <- cells_new$CELL
-    by_cell <- points_new %>% group_by(CELL) %>% summarise(geometry=st_combine(geometry)) %>% st_convex_hull()
+    by_cell <- points_new %>%
+      group_by(CELL) %>%
+      summarise(geometry=st_combine(geometry)) %>%
+      st_convex_hull() %>%
+      st_simplify(preserveTopology=TRUE, dTolerance=HULL_DIST)
     by_cell$CELL <- NULL
     # not sure why this keeps making different geometries, but try this
     points <- NULL
