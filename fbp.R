@@ -103,7 +103,7 @@ getCells <- function(landscape, pts) {
   }
   df <- as.data.table(cell)
   names(df) <- toupper(names(df))
-  df$FUELTYPE <- BASE_DATA$NAMES_FBP(df$FUELTYPE)
+  df$FUELTYPE <- BASE_DATA$FCT_NAMES_FBP(df$FUELTYPE)
   # HACK: simplify for now
   df$FUELTYPE <- substr(df$FUELTYPE, 1, 3)
   df[FUELTYPE == 'Wat', FUELTYPE := 'WA']
@@ -328,6 +328,9 @@ spread <- function(landscape, wx) {
     cells_new <- getCells(landscape, points_new)
     # throw out points that aren't in cells
     cells_new <- cells_new[!is.nan(CELL),]
+    # throw out water points
+    NON_FUELS <- c('NOT', 'NON', 'WA', 'UNK', 'UNC', 'VEG')
+    cells_new <- cells_new[!(FUELTYPE %in% NON_FUELS),]
     points_new <- points_new[cells_new$ID,]
     points_new$CELL <- cells_new$CELL
     by_cell <- points_new %>%

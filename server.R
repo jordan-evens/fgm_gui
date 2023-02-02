@@ -210,7 +210,7 @@ server <- function(input, output, session) {
   shp_canada <- BASE_DATA$SHP_CANADA
   tif_fbp <- BASE_DATA$TIF_FBP_AGG
   tif_fbp <- raster::raster(tif_fbp)
-  colours_fbp <- BASE_DATA$COLOURS_FBP
+  colours_fbp <- BASE_DATA$FCT_COLOURS_FBP
   m <- minmax(BASE_DATA$TIF_FBP)
   bbox <- as.vector(st_bbox(shp_canada))
   output$map <- renderLeaflet({

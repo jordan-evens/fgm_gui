@@ -143,11 +143,13 @@ ensure_data <- function(dir_data='./data_input/') {
   }
   fct_palette <- fct_fbp_lookup('color')
   fct_name <- fct_fbp_lookup('label')
+  fuel_names <- unlist(lapply(fbp_colours, function(x) { xmlGetAttr(x, 'label')}))
   return(list(SHP_CANADA=shp_canada,
               TIF_FBP=proj_fbp,
               TIF_FBP_AGG=tif_fbp_agg,
-              COLOURS_FBP=fct_palette,
-              NAMES_FBP=fct_name))
+              FCT_COLOURS_FBP=fct_palette,
+              FCT_NAMES_FBP=fct_name,
+              FUEL_NAMES=fuel_names))
 }
 
 check_in_bounds <- function(r, lat, lon) {
