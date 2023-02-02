@@ -7,12 +7,6 @@ MIN_ROS <- 0.1
 
 # simulation variables
 BASE_DATA <- ensure_data()
-SIM_LAT <- NULL
-SIM_LON <- NULL
-POINTS <- NULL
-CUR_TIME <- NULL
-CUR_LANDSCAPE <- NULL
-CUR_FBP_CELL <- NULL
 
 rad2deg <- function(theta) {
   return(theta * RAD_180)
@@ -41,7 +35,7 @@ round_pt_precision <- function(lat, lon) {
   return(list(lon=lon_rounded, lat=lat_rounded))
 }
 
-createSimulationEnvironment <- function(lat, lon) {
+getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
   tif_fbp <- BASE_DATA$TIF_FBP
   if (!check_in_bounds(tif_fbp, lat, lon)) {
     return()
@@ -50,13 +44,14 @@ createSimulationEnvironment <- function(lat, lon) {
   pt <- get_point(tif_fbp, lat, lon)
   tif_fbp_cell <- cellFromXY(tif_fbp, st_coordinates(pt))
   pt_origin <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
-  if (!is.null(CUR_FBP_CELL)  && CUR_FBP_CELL == tif_fbp_cell) {
+  if (!is.null(sim_env)  && sim_env$origin_cell == tif_fbp_cell) {
     print('keeping existing landscape')
-    return(list(origin=pt_origin,
-                origin_cell=CUR_FBP_CELL,
-                landscape=CUR_LANDSCAPE))
+    # clear burnt cells
+    values(sim_env$landscape$burnt) <- 0
+    sim_env$origin <- pt_origin
+    return(sim_env)
   }
-  print('In createSimulationEnvironment()')
+  print('In getSimulationEnvironment()')
   pt_proj <- st_transform(pt_origin, st_crs(tif_fbp))
   b <- st_bbox(pt_proj)
   dist <- NUM_CELLS * res(tif_fbp)
@@ -74,15 +69,18 @@ createSimulationEnvironment <- function(lat, lon) {
     tif_aspect_degrees <- as.integer(terrain(tif_elev, v='aspect', unit='degrees'))
     # HACK: convert for leaflet
     clipped <- raster::raster(clipped)
+    burnt <- copy(clipped)
+    values(burnt) <- 0
     # NOTE: use integer for everything because that should be precise enough
-    CUR_FBP_CELL <<- tif_fbp_cell
-    CUR_LANDSCAPE <<- as.integer(raster::stack(list(fueltype=clipped,
-                                                    elevation=tif_elev,
-                                                    slope=tif_slope_percent,
-                                                    aspect=tif_aspect_degrees)))
-    return(list(origin=pt_origin,
-                origin_cell=CUR_FBP_CELL,
-                landscape=CUR_LANDSCAPE))
+    landscape <- as.integer(raster::stack(list(fueltype=clipped,
+                                               elevation=tif_elev,
+                                               slope=tif_slope_percent,
+                                               aspect=tif_aspect_degrees,
+                                               burnt=burnt)))
+    sim_env <- (list(origin=pt_origin,
+                     origin_cell=tif_fbp_cell,
+                     landscape=landscape))
+    return(sim_env)
   }
   return()
 }
@@ -103,10 +101,8 @@ getCells <- function(landscape, pts) {
   }
   df <- as.data.table(cell)
   names(df) <- toupper(names(df))
-  df$FUELTYPE <- BASE_DATA$FCT_NAMES_FBP(df$FUELTYPE)
-  # HACK: simplify for now
-  df$FUELTYPE <- substr(df$FUELTYPE, 1, 3)
-  df[FUELTYPE == 'Wat', FUELTYPE := 'WA']
+  df$FUELTYPE <- to_fuel_abbreviation(BASE_DATA$FCT_NAMES_FBP(df$FUELTYPE))
+  print('returning cells')
   return(df)
 }
 calcFBP <- function(pt_cells, wx, time, lat, lon) {
@@ -244,16 +240,17 @@ calc_offsets <- function(fbp) {
   }
   return(offsets)
 }
-spread <- function(landscape, wx) {
-  if (is.null(POINTS)) {
+spread <- function(sim_env, wx) {
+  if (is.null(sim_env$points)) {
     return()
   }
   print('spread()')
   points_new <- NULL
+  landscape <- sim_env$landscape
   cell_size <- res(landscape)
   pt_cells <- list()
   cell_fbps <- list()
-  pt_cells <- getCells(landscape, POINTS)
+  pt_cells <- getCells(landscape, sim_env$points)
   print('>>>> pt_cells')
   print(pt_cells)
   print('<<<< pt_cells')
@@ -261,7 +258,9 @@ spread <- function(landscape, wx) {
     print('Could not get cells')
     return()
   }
-  cell_fbps <- calcFBP(pt_cells, wx, CUR_TIME, SIM_LAT, SIM_LON)
+  print('>>>> cell_fbps')
+  cell_fbps <- calcFBP(pt_cells, wx, sim_env$time, sim_env$lat, sim_env$lon)
+  print('<<<< cell_fbps')
   if (is.null(cell_fbps)) {
     print('Could not calculate FBP')
     return()
@@ -281,8 +280,8 @@ spread <- function(landscape, wx) {
   pts_by_cell <- make_points_by_cell(pt_cells)
   # don't go longer that it takes to go half a cell
   duration = 0.5 * cell_size / max(cell_fbps$ROS, na.rm=TRUE)
-  max_time <- floor_date(CUR_TIME + hours(1), unit='hour')
-  time_until_hour <- as.integer(difftime(max_time, CUR_TIME, units='secs')) / 60
+  max_time <- floor_date(sim_env$time + hours(1), unit='hour')
+  time_until_hour <- as.integer(difftime(max_time, sim_env$time, units='secs')) / 60
   duration <- min(duration, time_until_hour)
   print(duration)
   stopifnot(!is.na(duration))
@@ -291,9 +290,6 @@ spread <- function(landscape, wx) {
     # I think this only happens on edge of raster?
     # if (!(is.na(fbp$SLOPE) || is.na(fbp$ASPECT))) {
     if (!any(is.na(fbp))) {
-      # pt <- POINTS[i,]
-      # cell <- pt_cells[i,]
-      # fbp <- cell_fbps[i,]
       print('Calculating offsets')
       offsets <- calc_offsets(fbp)
       print(offsets)
@@ -304,7 +300,7 @@ spread <- function(landscape, wx) {
         print(dists)
         print('Getting xy')
         for (i in pts_by_cell[[as.character(cell_id)]]) {
-          pt <- POINTS[i,]
+          pt <- sim_env$points[i,]
           xy <- st_coordinates(pt)
           # print('Applying offsets')
           xy_with_offsets <- list(X=xy[1] + dists$X, Y=xy[2] + dists$Y)
@@ -328,9 +324,9 @@ spread <- function(landscape, wx) {
     cells_new <- getCells(landscape, points_new)
     # throw out points that aren't in cells
     cells_new <- cells_new[!is.nan(CELL),]
-    # throw out water points
-    NON_FUELS <- c('NOT', 'NON', 'WA', 'UNK', 'UNC', 'VEG')
-    cells_new <- cells_new[!(FUELTYPE %in% NON_FUELS),]
+    # throw out non-fuel points
+    cells_new <- cells_new[!(FUELTYPE %in% BASE_DATA$NON_FUELS),]
+    # mark all cells that have points as burnt
     points_new <- points_new[cells_new$ID,]
     points_new$CELL <- cells_new$CELL
     by_cell <- points_new %>%
@@ -353,21 +349,34 @@ spread <- function(landscape, wx) {
     return(hulled_pts)
   }
   points_new <- condense_points(points_new)
+  if (!is.null(points_new)) {
+    print(sprintf('Have %d points after condense', nrow(points_new)))
+    print(points_new)
+    # HACK: recalculate just so we're not editing the raster inside the condense function
+    cells_new <- getCells(landscape, points_new)
+    print(sprintf('Expecting at least %d burnt cells', nrow(unique(cells_new$CELL))))
+    values(sim_env$landscape$burnt)[unique(cells_new$CELL)] <- 1
+    print(sprintf('After spread condense, have %d burnt cells', sum(values(sim_env$landscape$burnt))))
+  } else {
+    print('No points after condense')
+  }
   print('Incrementing time')
   # HACK: add a seconds so it should be enough to get into next hour if close
-  CUR_TIME <<- CUR_TIME + seconds(as.integer(duration * 60) + 1)
-  print(CUR_TIME)
-  POINTS <<- points_new
-  return(POINTS)
+  sim_env$time <- sim_env$time + seconds(as.integer(duration * 60) + 1)
+  print(sim_env$time)
+  sim_env$points <- points_new
+  return(sim_env)
 }
-start_fire <- function(landscape, lat, lon, time) {
+start_fire <- function(sim_env, lat, lon, time) {
   # HACK: use same lat/lon for fbp calculations for now
-  SIM_LAT <<- lat
-  SIM_LON <<- lon
-  # POINTS <<- list(list(lat=lat, lon=lon, geometry=get_point(landscape, lat, lon)))
-  POINTS <<- get_point(landscape, lat, lon)
-  CUR_TIME <<- time
+  sim_env$lat <- lat
+  sim_env$lon <- lon
+  sim_env$points <- get_point(landscape, lat, lon)
+  sim_env$time <- time
   print(sprintf('Starting fire at (%f, %f) at time %s', lat, lon, time))
-  return(POINTS)
+  values(sim_env$landscape$burnt) <- 0
+  cell <- getCells(sim_env$landscape, sim_env$points)
+  values(sim_env$landscape$burnt)[unique(cell$CELL)] <- 1
+  return(sim_env)
 }
 # start_fire(landscape, lat, lon, time)

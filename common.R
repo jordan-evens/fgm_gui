@@ -63,6 +63,12 @@ get_elevation <- function(r) {
   return(resample(e, locations))
 }
 
+to_fuel_abbreviation <- function(name) {
+  a <- toupper(substr(name, 1, 3))
+  # HACK: WAT gets changed to WA for CFFDRS package
+  return(ifelse(a == 'WAT', 'WA', a))
+}
+
 ensure_data <- function(dir_data='./data_input/') {
   dir_download <- paste0(dir_data, 'download/')
   dir_extracted <- paste0(dir_data, 'extracted/')
@@ -144,12 +150,18 @@ ensure_data <- function(dir_data='./data_input/') {
   fct_palette <- fct_fbp_lookup('color')
   fct_name <- fct_fbp_lookup('label')
   fuel_names <- unlist(lapply(fbp_colours, function(x) { xmlGetAttr(x, 'label')}))
+  fuel_values <- as.integer(unlist(lapply(fbp_colours, function(x) { xmlGetAttr(x, 'value')})))
+  fuel_abbreviations <- to_fuel_abbreviation((fuel_names))
+  non_fuels <- unique(fuel_abbreviations[grep('-', fuel_abbreviations, invert=TRUE)])
+  non_fuel_values <- fuel_values[fuel_abbreviations %in% non_fuels]
   return(list(SHP_CANADA=shp_canada,
               TIF_FBP=proj_fbp,
               TIF_FBP_AGG=tif_fbp_agg,
               FCT_COLOURS_FBP=fct_palette,
               FCT_NAMES_FBP=fct_name,
-              FUEL_NAMES=fuel_names))
+              FUEL_NAMES=fuel_names,
+              NON_FUELS=non_fuels,
+              NON_FUEL_VALUES=non_fuel_values))
 }
 
 check_in_bounds <- function(r, lat, lon) {

@@ -5,6 +5,7 @@ library('DT')
 library('shinyvalidate')
 
 NUM_DATATABLE_ROWS <- 10
+DEFAULT_OPACITY <- 0.5
 
 server <- function(input, output, session) {
   makeRamp <- function(colours, value_min, value_max, breaks) {
@@ -15,6 +16,7 @@ server <- function(input, output, session) {
   COLOURS_ELEV <- makeRamp(c('white', 'black'), -500, 9000, 100)
   COLOURS_SLOPE <- makeRamp(c('white', 'red'), 0, 300, 10)
   COLOURS_ASPECT <- makeRamp(c('white', 'red', 'black', 'blue', 'white'), 0, 360, 10)
+  COLOURS_BURNT <- makeRamp(c('white', 'black'), 0, 2, 1)
   updateSimulationTimeSlider <- function(value=NULL, wx=NULL) {
     if (is.na(tryCatch(as.numeric(input$duration), error={ NA }))) {
       return()
@@ -113,8 +115,19 @@ server <- function(input, output, session) {
       rownames=FALSE
     )
   }
-  updatePoints <- function(pts) {
+  updatePoints <- function(sim_env) {
+    pts <- sim_env$points
+    landscape <- sim_env$landscape
     print(sprintf('Called updatePoints() with %d points', nrow(pts)))
+    print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
+    m <- leafletProxy('map_zoom') %>%
+      removeImage('Burnt') %>%
+      addRasterImage(x=landscape$burnt,
+                     project=FALSE,
+                     colors=COLOURS_BURNT,
+                     opacity=DEFAULT_OPACITY,
+                     layerId='Burnt',
+                     group='Burnt')
     clear_points <- function(map_id) {
       print('clearing active points')
       m <- leafletProxy(map_id) %>%
@@ -126,7 +139,7 @@ server <- function(input, output, session) {
     if (!is.null(pts)) {
       pts_map <- st_transform(pts, PROJ_DEFAULT)
       add_points <- function(map_id) {
-        print('clearing active points')
+        print('drawing active points')
         m <- leafletProxy(map_id) %>%
           addCircles(
             data=pts_map,
@@ -142,7 +155,7 @@ server <- function(input, output, session) {
       df <- as.data.frame(st_coordinates(pts_map))
     }
     print('Updating simTime')
-    updateTextInput(session, 'simTime', value=CUR_TIME)
+    updateTextInput(session, 'simTime', value=sim_env$time)
     output$points <- DT::renderDT(
       df,
       options=list(
@@ -225,7 +238,7 @@ server <- function(input, output, session) {
       addRasterImage(x=tif_fbp,
                      project=FALSE,
                      colors=colours_fbp,
-                     opacity=0.5,
+                     opacity=DEFAULT_OPACITY,
                      layerId='FBP',
                      group='FBP') %>%
       addLayersControl(
@@ -272,7 +285,7 @@ server <- function(input, output, session) {
     # # stopifnot(lat == as.double(latlong_rounded$lat))
     # lon <- as.double(latlong_rounded$lon)
     # lat <- as.double(latlong_rounded$lat)
-    sim_env <- createSimulationEnvironment(lat, lon)
+    sim_env <- getSimulationEnvironment(lat, lon, session$userData$sim_env)
     is_same_env <- !is.null(session$userData$sim_env) && session$userData$sim_env$origin_cell == sim_env$origin_cell
     session$userData$latitude <- lat
     session$userData$longitude <- lon
@@ -289,20 +302,14 @@ server <- function(input, output, session) {
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
+      print('Get bbox')
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(landscape), crs=as.character(crs(landscape)))), PROJ_DEFAULT)))
-      print('Got bbox')
-      print(landscape)
-      print(landscape$elevation)
-      print(landscape$slope)
-      print(landscape$aspect)
-      print(landscape$fueltype)
-      print(bbox)
-      print(pt)
       print('Drawing zoomed map')
       if (!is_same_env) {
         print('Adding new landscape to map_zoom')
         output$map_zoom <- renderLeaflet({
           # no point in rendering again if environment didn't change
+          print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
           m <- leaflet() %>%
             addRasterImage(x=landscape$elevation,
                            project=FALSE,
@@ -325,12 +332,18 @@ server <- function(input, output, session) {
             addRasterImage(x=landscape$fueltype,
                            project=FALSE,
                            colors=colours_fbp,
-                           opacity=0.5,
+                           opacity=DEFAULT_OPACITY,
                            layerId='FBP',
                            group='FBP') %>%
+            addRasterImage(x=landscape$burnt,
+                           project=FALSE,
+                           colors=COLOURS_BURNT,
+                           opacity=DEFAULT_OPACITY,
+                           layerId='Burnt',
+                           group='Burnt') %>%
             addLayersControl(
               baseGroups=c('Elevation', 'Slope', 'Aspect'),
-              overlayGroups=c('FBP'),
+              overlayGroups=c('FBP', 'Burnt'),
               options = layersControlOptions(collapsed = TRUE)
             ) %>%
             fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
@@ -341,8 +354,16 @@ server <- function(input, output, session) {
       } else {
         # HACK: seems like leafletProxy doesn't work if we just set it above with new env
         print('Add markers to map_zoom')
+        print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
         leafletProxy('map_zoom') %>%
           clearGroup('active') %>%
+          removeImage('Burnt') %>%
+          addRasterImage(x=landscape$burnt,
+                         project=FALSE,
+                         colors=COLOURS_BURNT,
+                         opacity=DEFAULT_OPACITY,
+                         layerId='Burnt',
+                         group='Burnt') %>%
           addMarkers(data=pt,
                      layerId='origin',
                      icon=icon_origin)
@@ -439,12 +460,15 @@ server <- function(input, output, session) {
     lat <- session$userData$latitude
     lon <- session$userData$longitude
     time <- session$userData$startTime
-    updatePoints(start_fire(landscape, lat, lon, time))
+    session$userData$sim_env <- start_fire(session$userData$sim_env, lat, lon, time)
+    print(sprintf('After start_fire(), have %d burnt cells', sum(values(session$userData$sim_env$landscape$burnt))))
+    updatePoints(session$userData$sim_env)
   })
   observeEvent(input$do_step, {
-    landscape <- session$userData$sim_env$landscape
     wx <- session$userData$wx
-    updatePoints(spread(landscape, wx))
+    session$userData$sim_env <- spread(session$userData$sim_env, wx)
+    print(sprintf('After spread(), have %d burnt cells', sum(values(session$userData$sim_env$landscape$burnt))))
+    updatePoints(session$userData$sim_env)
   })
   session$onSessionEnded(stopApp)
 }
