@@ -65,7 +65,7 @@ server <- function(input, output, session) {
     # lon <- as.numeric(input$longitude)
     lat <- session$userData$latitude
     lon <- session$userData$longitude
-    landscape <- session$userData$landscape
+    landscape <- session$userData$sim_env$landscape
     if (is.null(lat) || is.null(lon) || is.null(landscape)) {
       print('No lat/long or landscape, so not updating fbp')
       return()
@@ -242,8 +242,8 @@ server <- function(input, output, session) {
                           iconAnchorX=20,
                           iconAnchorY=20)
   icon_burning <- makeIcon(iconUrl=pchIcons(16, 10, 10, col="red", lwd = 2)[[1]],
-                          iconAnchorX=5,
-                          iconAnchorY=5)
+                           iconAnchorX=5,
+                           iconAnchorY=5)
   shp_canada <- BASE_DATA$SHP_CANADA
   tif_fbp <- BASE_DATA$TIF_FBP_AGG
   tif_fbp <- raster::raster(tif_fbp)
@@ -286,7 +286,7 @@ server <- function(input, output, session) {
       #   lat=~lat,
       #   group='burning') %>%
       # fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
-      setView((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2, zoom=3)
+    setView((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2, zoom=3)
   })
   handleClick <- function(event) {
     # event <- list(lat=48.67645, lng=-88.6908)
@@ -309,19 +309,20 @@ server <- function(input, output, session) {
     # # stopifnot(lat == as.double(latlong_rounded$lat))
     # lon <- as.double(latlong_rounded$lon)
     # lat <- as.double(latlong_rounded$lat)
-    landscape_all <- createLandscape(lat, lon)
+    sim_env <- createSimulationEnvironment(lat, lon)
+    is_same_env <- !is.null(session$userData$sim_env) && session$userData$sim_env$origin_cell == sim_env$origin_cell
     session$userData$latitude <- lat
     session$userData$longitude <- lon
     wx <- get_weather(lat, lon)
     session$userData$wx <- wx
     updateWeather(wx)
-    print('Got landscape')
-    print(landscape_all)
+    print('Got sim_env')
+    print(sim_env)
     print('Checking landscape')
-    if (!is.null(landscape_all) && !is.null(landscape_all$data)) {
-      pt <- landscape_all$origin
-      landscape <- landscape_all$data
-      session$userData$landscape <- landscape
+    if (!is.null(sim_env) && !is.null(sim_env$landscape)) {
+      pt <- sim_env$origin
+      landscape <- sim_env$landscape
+      session$userData$sim_env <- sim_env
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
@@ -335,43 +336,55 @@ server <- function(input, output, session) {
       print(bbox)
       print(pt)
       print('Drawing zoomed map')
-      output$map_zoom <- renderLeaflet({
-        m <- leaflet() %>%
-          addRasterImage(x=landscape$elevation,
-                         project=FALSE,
-                         colors=COLOURS_ELEV,
-                         opacity=1,
-                         layerId='Elevation',
-                         group='Elevation') %>%
-          addRasterImage(x=landscape$slope,
-                         project=FALSE,
-                         colors=COLOURS_SLOPE,
-                         opacity=1,
-                         layerId='Slope',
-                         group='Slope') %>%
-          addRasterImage(x=landscape$aspect,
-                         project=FALSE,
-                         colors=COLOURS_ASPECT,
-                         opacity=1,
-                         layerId='Aspect',
-                         group='Aspect') %>%
-          addRasterImage(x=landscape$fueltype,
-                         project=FALSE,
-                         colors=colours_fbp,
-                         opacity=0.5,
-                         layerId='FBP',
-                         group='FBP') %>%
-          addLayersControl(
-            baseGroups=c('Elevation', 'Slope', 'Aspect'),
-            overlayGroups=c('FBP'),
-            options = layersControlOptions(collapsed = TRUE)
-          ) %>%
-          fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
+      if (!is_same_env) {
+        print('Adding new landscape to map_zoom')
+        output$map_zoom <- renderLeaflet({
+          # no point in rendering again if environment didn't change
+          m <- leaflet() %>%
+            addRasterImage(x=landscape$elevation,
+                           project=FALSE,
+                           colors=COLOURS_ELEV,
+                           opacity=1,
+                           layerId='Elevation',
+                           group='Elevation') %>%
+            addRasterImage(x=landscape$slope,
+                           project=FALSE,
+                           colors=COLOURS_SLOPE,
+                           opacity=1,
+                           layerId='Slope',
+                           group='Slope') %>%
+            addRasterImage(x=landscape$aspect,
+                           project=FALSE,
+                           colors=COLOURS_ASPECT,
+                           opacity=1,
+                           layerId='Aspect',
+                           group='Aspect') %>%
+            addRasterImage(x=landscape$fueltype,
+                           project=FALSE,
+                           colors=colours_fbp,
+                           opacity=0.5,
+                           layerId='FBP',
+                           group='FBP') %>%
+            addLayersControl(
+              baseGroups=c('Elevation', 'Slope', 'Aspect'),
+              overlayGroups=c('FBP'),
+              options = layersControlOptions(collapsed = TRUE)
+            ) %>%
+            fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
+            addMarkers(data=pt,
+                       layerId='origin',
+                       icon=icon_origin)
+        })
+      } else {
+        # HACK: seems like leafletProxy doesn't work if we just set it above with new env
+        print('Add markers to map_zoom')
+        leafletProxy('map_zoom') %>%
+          clearGroup('active') %>%
           addMarkers(data=pt,
                      layerId='origin',
                      icon=icon_origin)
-      })
-      print('Draw main map')
+      }
+      print('Add markers to main map')
       leafletProxy("map") %>%
         addMarkers(data=pt,
                    layerId='origin',
@@ -459,14 +472,14 @@ server <- function(input, output, session) {
     updateFBPOriginTable()
   })
   observeEvent(input$do_reset, {
-    landscape <- session$userData$landscape
+    landscape <- session$userData$sim_env$landscape
     lat <- session$userData$latitude
     lon <- session$userData$longitude
     time <- session$userData$startTime
     updatePoints(start_fire(landscape, lat, lon, time))
   })
   observeEvent(input$do_step, {
-    landscape <- session$userData$landscape
+    landscape <- session$userData$sim_env$landscape
     wx <- session$userData$wx
     updatePoints(spread(landscape, wx))
   })

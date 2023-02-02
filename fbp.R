@@ -11,6 +11,8 @@ SIM_LAT <- NULL
 SIM_LON <- NULL
 POINTS <- NULL
 CUR_TIME <- NULL
+CUR_LANDSCAPE <- NULL
+CUR_FBP_CELL <- NULL
 
 rad2deg <- function(theta) {
   return(theta * RAD_180)
@@ -39,19 +41,27 @@ round_pt_precision <- function(lat, lon) {
   return(list(lon=lon_rounded, lat=lat_rounded))
 }
 
-createLandscape <- function(lat, lon) {
+createSimulationEnvironment <- function(lat, lon) {
   tif_fbp <- BASE_DATA$TIF_FBP
   if (!check_in_bounds(tif_fbp, lat, lon)) {
     return()
   }
-  pt <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
-  fbp_orig <- tif_fbp
-  print('In createLandscape()')
-  pt_proj <- st_transform(pt, st_crs(fbp_orig))
+  # HACK: don't create landscape if in same cell as we are already
+  pt <- get_point(tif_fbp, lat, lon)
+  tif_fbp_cell <- cellFromXY(tif_fbp, st_coordinates(pt))
+  pt_origin <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
+  if (!is.null(CUR_FBP_CELL)  && CUR_FBP_CELL == tif_fbp_cell) {
+    print('keeping existing landscape')
+    return(list(origin=pt_origin,
+                origin_cell=CUR_FBP_CELL,
+                landscape=CUR_LANDSCAPE))
+  }
+  print('In createSimulationEnvironment()')
+  pt_proj <- st_transform(pt_origin, st_crs(tif_fbp))
   b <- st_bbox(pt_proj)
-  dist <- NUM_CELLS * res(fbp_orig)
+  dist <- NUM_CELLS * res(tif_fbp)
   box <- ext(c(b$xmin - dist[1] / 2, b$xmax + dist[1] / 2, b$ymin - dist[2] / 2, b$ymax + dist[2] / 2))
-  clipped <- tryCatch(crop(fbp_orig, box), error=function(e) { NULL })
+  clipped <- tryCatch(crop(tif_fbp, box), error=function(e) { NULL })
   if (is.null(clipped)) {
     return()
   }
@@ -65,11 +75,14 @@ createLandscape <- function(lat, lon) {
     # HACK: convert for leaflet
     clipped <- raster::raster(clipped)
     # NOTE: use integer for everything because that should be precise enough
-    return(list(origin=pt,
-                data=as.integer(raster::stack(list(fueltype=clipped,
-                                                   elevation=tif_elev,
-                                                   slope=tif_slope_percent,
-                                                   aspect=tif_aspect_degrees)))))
+    CUR_FBP_CELL <<- tif_fbp_cell
+    CUR_LANDSCAPE <<- as.integer(raster::stack(list(fueltype=clipped,
+                                                    elevation=tif_elev,
+                                                    slope=tif_slope_percent,
+                                                    aspect=tif_aspect_degrees)))
+    return(list(origin=pt_origin,
+                origin_cell=CUR_FBP_CELL,
+                landscape=CUR_LANDSCAPE))
   }
   return()
 }

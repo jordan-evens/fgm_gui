@@ -4,9 +4,9 @@ do_test <- function() {
   lon <- -90
   wx <- get_weather(lat, lon, init=list(ffmc=90, dmc=50, dc=300, percent_cured=100))
   time <- min(wx$DATETIME) + hours(10)
-  landscape_all <- createLandscape(lat, lon)
-  pt <- landscape_all$origin
-  landscape <- landscape_all$data
+  sim_env <- createSimulationEnvironment(lat, lon)
+  pt <- sim_env$origin
+  landscape <- sim_env$landscape
   start_fire(landscape, lat, lon, time)
   spread(landscape, wx)
 }
