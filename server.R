@@ -1,6 +1,7 @@
 source('common.R')
 source('weather.R')
 source('fbp.R')
+library('rgeos')
 library('DT')
 library('shinyvalidate')
 
@@ -45,6 +46,36 @@ server <- function(input, output, session) {
                       timezone=timezone)
     session$userData$startTime <- value
     updateFBPOriginTable(startTime=value)
+  }
+  getPerimeter <- function(sim_env=NULL){
+    if (is.null(sim_env)) {
+      sim_env <- session$userData$sim_env
+      if (is.null(sim_env)) {
+        return()
+      }
+    }
+    perim <- st_as_sf(raster::rasterToPolygons(sim_env$landscape$burnt, fun=function(x) {x > 0}, digits=1, dissolve=TRUE))
+    # HACK: missing crs for some reason
+    st_crs(perim) <- st_crs(sim_env$landscape)
+    perim <- st_transform(perim, PROJ_DEFAULT)
+    return(perim)
+  }
+  addPerimeter <- function(m, sim_env=NULL) {
+    perim <- getPerimeter()
+    if (is.null(perim)) {
+      print('No perimeter to add')
+      return(m)
+    }
+    print('Adding perim')
+    return(m %>%
+             clearGroup('Perimeter') %>%
+             addPolygons(data=perim,
+                         group='Perimeter',
+                         opacity=1,
+                         weight=5,
+                         # fill=FALSE,
+                         color='black'))
+
   }
   updateFBPOriginTable <- function(startTime=NULL, wx=NULL) {
     print('updateFBPOriginTable()')
@@ -121,6 +152,7 @@ server <- function(input, output, session) {
     print(sprintf('Called updatePoints() with %d points', nrow(pts)))
     print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
     m <- leafletProxy('map_zoom') %>%
+      addPerimeter() %>%
       removeImage('Burnt') %>%
       addRasterImage(x=landscape$burnt,
                      project=FALSE,
@@ -128,6 +160,7 @@ server <- function(input, output, session) {
                      opacity=DEFAULT_OPACITY,
                      layerId='Burnt',
                      group='Burnt')
+
     clear_points <- function(map_id) {
       print('clearing active points')
       m <- leafletProxy(map_id) %>%
@@ -356,6 +389,7 @@ server <- function(input, output, session) {
         print('Add markers to map_zoom')
         print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
         leafletProxy('map_zoom') %>%
+          addPerimeter() %>%
           clearGroup('active') %>%
           removeImage('Burnt') %>%
           addRasterImage(x=landscape$burnt,

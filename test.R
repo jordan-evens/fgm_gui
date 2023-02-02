@@ -7,8 +7,7 @@ do_test <- function() {
   sim_env <- getSimulationEnvironment(lat, lon)
   pt <- sim_env$origin
   landscape <- sim_env$landscape
-  new_sim_env <- start_fire(sim_env, lat, lon, time)
-  stopifnot(new_sim_env == sim_env)
-  spread(sim_env, wx)
+  sim_env <- start_fire(sim_env, lat, lon, time)
+  sim_env <- spread(sim_env, wx)
 }
 do_test()
