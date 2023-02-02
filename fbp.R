@@ -187,7 +187,7 @@ calc_offsets <- function(fbp) {
     sin_t_sq <- sin_t * sin_t
     return(abs((a * ((flank_ros * cos_t * sqrt(f_sq_cos_t_sq + a_sq_sub_c_sq * sin_t_sq) - ac * sin_t_sq) / (f_sq_cos_t_sq + a_sq * sin_t_sq)) + c) / cos_t))
   }
-  calc_offsets <- function(angle_radians, ros_flat=NULL) {
+  calc_offsets_at_theta <- function(angle_radians, ros_flat=NULL) {
     angle_radians <- angle_radians
     if (is.null(ros_flat)) {
       ros_flat <- calculate_ros(angle_radians)
@@ -198,16 +198,18 @@ calc_offsets <- function(fbp) {
     direction_cw <- raz + angle_radians
     direction_ccw <- raz - angle_radians
     # spread is symmetrical across the center axis, but needs to be adjusted if on a slope
-    return(rbind(calc_offset(direction_cw, ros_flat * correction_factor(direction_cw)),
-                 calc_offset(direction_ccw, ros_flat * correction_factor(direction_ccw))))
-  }
-  calc_offsets_calc_ros <- function(angle_radians) {
-    return(calc_offsets(angle_radians, calculate_ros(angle_radians)))
+    results <- (rbind(calc_offset(direction_cw, ros_flat * correction_factor(direction_cw)),
+                      calc_offset(direction_ccw, ros_flat * correction_factor(direction_ccw))))
+    print(results)
+    return(results)
   }
   print(sprintf('head_ros = %f', head_ros))
   offsets <- list()
-  added <- calc_offsets(raz, head_ros)
+  print(sprintf('added <- calc_offsets_at_theta(%f, %f)', raz, head_ros))
+  added <- calc_offsets_at_theta(raz, head_ros)
+  print(added)
   if (is.null(added)) {
+    print('No spread')
     return()
   }
   offsets <- rbind(offsets, added)
@@ -215,18 +217,18 @@ calc_offsets <- function(fbp) {
   i <- STEP;
   while (!is.null(added) && i < 90) {
     print(sprintf('added for %d', i - STEP))
-    added <- calc_offsets_calc_ros(deg2rad(i))
+    added <- calc_offsets_at_theta(deg2rad(i))
     offsets <- rbind(offsets, added)
     i <- i + STEP
   }
   if (!is.null(added)) {
     print(sprintf('added for %d', i - STEP))
-    added <- calc_offsets(deg2rad(90), flank_ros * sqrt(a_sq_sub_c_sq) / a)
+    added <- calc_offsets_at_theta(deg2rad(90), flank_ros * sqrt(a_sq_sub_c_sq) / a)
     offsets <- rbind(offsets, added)
     i <- 90 + STEP
     while (!is.null(added) && i < 180) {
       print(sprintf('added for %d', i - STEP))
-      added <- calc_offsets_calc_ros(deg2rad(i))
+      added <- calc_offsets_at_theta(deg2rad(i))
       offsets <- rbind(offsets, added)
       i <- i + STEP
     }
@@ -313,39 +315,37 @@ spread <- function(landscape, wx) {
       }
     }
   }
+  print(sprintf('nrow(points_new) == %d)', nrow(points_new)))
   print(points_new)
-  # now we want to aggregate the points by cell
-  # (m)
-  # HULL_DIST <- 30
-  # hulled_pts <- NULL
-  cells_new <- getCells(landscape, points_new)
-  # throw out points that aren't in cells
-  cells_new <- cells_new[!is.nan(CELL),]
-  points_new <- points_new[cells_new$ID,]
-  points_new$CELL <- cells_new$CELL
-  by_cell <- points_new %>% group_by(CELL) %>% summarise(geometry=st_combine(geometry)) %>% st_convex_hull()
-  by_cell$CELL <- NULL
-  # not sure why this keeps making different geometries, but try this
-  points <- NULL
-  for (i in 1:nrow(by_cell)) {
-    points <- rbind(points, st_cast(by_cell[i,], 'POINT'))
+  condense_points <- function(points_new) {
+    if (is.null(points_new)) {
+      return()
+    }
+    # now we want to aggregate the points by cell
+    # (m)
+    # HULL_DIST <- 30
+    # hulled_pts <- NULL
+    cells_new <- getCells(landscape, points_new)
+    # throw out points that aren't in cells
+    cells_new <- cells_new[!is.nan(CELL),]
+    points_new <- points_new[cells_new$ID,]
+    points_new$CELL <- cells_new$CELL
+    by_cell <- points_new %>% group_by(CELL) %>% summarise(geometry=st_combine(geometry)) %>% st_convex_hull()
+    by_cell$CELL <- NULL
+    # not sure why this keeps making different geometries, but try this
+    points <- NULL
+    for (i in 1:nrow(by_cell)) {
+      points <- rbind(points, st_cast(by_cell[i,], 'POINT'))
+    }
+    # # how does this happen and what does it mean?
+    # linestrings <- by_cell[lapply(by_cell$geometry, function(s) { class(s)[[2]] }) == 'LINESTRING', ]
+    # points <- by_cell[lapply(by_cell$geometry, function(s) { class(s)[[2]] }) == 'POINT', ]
+    # points <- rbind(points, st_cast(linestrings, 'POINT'))
+    hulled_pts <- st_as_sf(as.data.frame(points))
+    st_crs(hulled_pts) <- st_crs(points_new)
+    return(hulled_pts)
   }
-  # # how does this happen and what does it mean?
-  # linestrings <- by_cell[lapply(by_cell$geometry, function(s) { class(s)[[2]] }) == 'LINESTRING', ]
-  # points <- by_cell[lapply(by_cell$geometry, function(s) { class(s)[[2]] }) == 'POINT', ]
-  # points <- rbind(points, st_cast(linestrings, 'POINT'))
-  hulled_pts <- st_as_sf(as.data.frame(points))
-  st_crs(hulled_pts) <- st_crs(points_new)
-  points_new <- hulled_pts
-  # pts_by_cell <- make_points_by_cell(cells_new)
-  # for (cell_id in unique(names(pts_by_cell))) {
-  #   cell_pts <- points_new[pts_by_cell[[cell_id]], ]
-  #   # HACK: make into MULTIPOINT so hull works
-  #   mp <- st_combine(cell_pts)
-  #   hull_pts <- st_convex_hull(mp)
-  #   p <- as.data.frame(st_cast(st_sfc(mp), 'POINT'))
-  #   hulled_pts <- rbind(hulled_pts, p)
-  # }
+  points_new <- condense_points(points_new)
   print('Incrementing time')
   # HACK: add a seconds so it should be enough to get into next hour if close
   CUR_TIME <<- CUR_TIME + seconds(as.integer(duration * 60) + 1)

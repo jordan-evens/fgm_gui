@@ -115,33 +115,19 @@ server <- function(input, output, session) {
   }
   updatePoints <- function(pts) {
     print(sprintf('Called updatePoints() with %d points', nrow(pts)))
-    # print(pts)
+    clear_points <- function(map_id) {
+      print('clearing active points')
+      m <- leafletProxy(map_id) %>%
+        clearGroup('active')
+    }
+    clear_points('map')
+    clear_points('map_zoom')
+    df <- as.data.frame(NULL)
     if (!is.null(pts)) {
-      # print('st_transform()')
-      pts_proj <- st_transform(pts, PROJ_DEFAULT)
-      # print(pts_proj)
-      # pts_sp <- as(pts_proj, 'Spatial')
-      # pts_map <- pts_sp
-      # pts_map <- st_combine(pts_proj)
-      pts_map <- pts_proj
-      # pts_map <- as.data.table(as.data.frame(st_coordinates(pts_proj)))
-      # print(pts_map)
-      # pts_map <- pts_map[!is.na(X),]
-      # if (is.null(pts_map)) {
-      #   return()
-      # }
-      # names(pts_map) <- c('Longitude', 'Latitude')
-      # pts_map$ID <- 1:nrow(pts_map)
-      # # is data.table breaking it?
-      # pts_map <- as.data.frame(pts_map)
-      # # HACK: seems like it only draw one point if using 'data=pts_proj'
-      # xy <- st_coordinates(pts_proj)
+      pts_map <- st_transform(pts, PROJ_DEFAULT)
       add_points <- function(map_id) {
-        # print(sprintf('add to %s', map_id))
+        print('clearing active points')
         m <- leafletProxy(map_id) %>%
-          # removeMarker('burning') %>%
-          clearGroup('active') %>%
-          # # addMarkers(
           addCircles(
             data=pts_map,
             color='red',
@@ -149,51 +135,28 @@ server <- function(input, output, session) {
             weight=10,
             opacity=1,
             fillOpacity=1,
-            # lng=pts_map$Longitude,
-            # lat=pts_map$Latitude,
-            # data=pts_map,
-            # pts_map
-            # lng=as.vector(pts_map$X),
-            # lat=as.vector(pts_map$Y),
-            # data=pts_map,
-            # lng=~Longitude,
-            # lat=~Latitude,
-            # lng=xy[,1],
-            # lat=xy[,2],
-            # icon=icon_burning,
             group='active')
-        # clearMarkers()
-        # for (i in 1:nrow(pts_map)) {
-        #   addCircles(m,
-        #              lng=pts_map$Longitude[i],
-        #              lat=pts_map$Latitude[i],
-        #              color='red',
-        #              radius=10,
-        #              weight=10,
-        #              opacity=1,
-        #              fillOpacity=1,
-        #              layerId=sprintf('burning%03d', i))
-        # }
       }
       add_points('map')
       add_points('map_zoom')
-      # print('Updating simTime')
-      updateTextInput(session, 'simTime', value=CUR_TIME)
-      output$points <- DT::renderDT(
-        as.data.frame(st_coordinates(pts_proj)),
-        options=list(
-          dom='t',
-          # pageLength=nrow(pts_proj),
-          autoWidth=TRUE,
-          scrollX=TRUE,
-          # HACK: maybe this works?
-          scrollY=TRUE,
-          paging=FALSE
-        ),
-        server=FALSE,
-        rownames=FALSE
-      )
+      df <- as.data.frame(st_coordinates(pts_map))
     }
+    print('Updating simTime')
+    updateTextInput(session, 'simTime', value=CUR_TIME)
+    output$points <- DT::renderDT(
+      df,
+      options=list(
+        dom='t',
+        pageLength=nrow(df),
+        autoWidth=TRUE,
+        scrollX=TRUE,
+        # HACK: maybe this works?
+        scrollY=TRUE,
+        paging=FALSE
+      ),
+      server=FALSE,
+      rownames=FALSE
+    )
     # print('Done updatePoints()')
     # print(class(pts))
   }
