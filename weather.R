@@ -24,6 +24,10 @@ get_weather <- function(lat, lon, init=list(ffmc=85, dmc=15, dc=6, percent_cured
   day1 <- wx[1,]
   date_start <- make_date(day1$YR, day1$MON, day1$DAY)
   tz <- tz_offset(date_start, timezone)$utc_offset_h
+  # HACK: remove all rain
+  wx$PREC <- 0
+  # HACK: halve RH so things actually happen
+  wx$RH <- wx$RH / 2
   wx <- hFWI(wx, tz, ffmc_old=init$ffmc, dmc_old=init$dmc, dc_old=init$dc, percent_cured=init$percent_cured)
   # HACK: try to minimize memory usage
   gc()
