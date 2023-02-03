@@ -35,6 +35,13 @@ round_pt_precision <- function(lat, lon) {
   return(list(lon=lon_rounded, lat=lat_rounded))
 }
 
+is_unburnable <- function(fueltype) {
+  r <- copy(fueltype)
+  names(r) <- 'unburnable'
+  values(r) <- values(r) %in% BASE_DATA$NON_FUEL_VALUES
+  return(r)
+}
+
 getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
   tif_fbp <- BASE_DATA$TIF_FBP
   if (!check_in_bounds(tif_fbp, lat, lon)) {
@@ -48,6 +55,8 @@ getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
     print('keeping existing landscape')
     # clear burnt cells
     values(sim_env$landscape$burnt) <- 0
+    # don't need to reset this if we don't edit it, but look into that later
+    sim_env$landscape$unburnable <- is_unburnable(sim_env$landscape$fueltype)
     sim_env$origin <- pt_origin
     return(sim_env)
   }
@@ -68,15 +77,18 @@ getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
     tif_slope_percent <- as.integer(tan(terrain(tif_elev, v='slope', unit='radians')) * 100)
     tif_aspect_degrees <- as.integer(terrain(tif_elev, v='aspect', unit='degrees'))
     # HACK: convert for leaflet
-    clipped <- raster::raster(clipped)
-    burnt <- copy(clipped)
+    fueltype <- raster::raster(clipped)
+    burnt <- copy(fueltype)
+    names(burnt) <- 'burnt'
     values(burnt) <- 0
+    unburnable <- is_unburnable(fueltype)
     # NOTE: use integer for everything because that should be precise enough
-    landscape <- as.integer(raster::stack(list(fueltype=clipped,
+    landscape <- as.integer(raster::stack(list(fueltype=fueltype,
                                                elevation=tif_elev,
                                                slope=tif_slope_percent,
                                                aspect=tif_aspect_degrees,
-                                               burnt=burnt)))
+                                               burnt=burnt,
+                                               unburnable=unburnable)))
     sim_env <- (list(origin=pt_origin,
                      origin_cell=tif_fbp_cell,
                      landscape=landscape))
@@ -103,6 +115,10 @@ getCells <- function(landscape, pts) {
   names(df) <- toupper(names(df))
   df$FUELTYPE <- to_fuel_abbreviation(BASE_DATA$FCT_NAMES_FBP(df$FUELTYPE))
   print('returning cells')
+  cell <- unique(df$CELL)
+  cell <- as.data.table(cbind(cell, rowColFromCell(landscape, cell)))
+  names(cell) <- toupper(names(cell))
+  df <- df[cell, on=c('CELL')]
   return(df)
 }
 calcFBP <- function(pt_cells, wx, time, lat, lon) {
@@ -240,6 +256,33 @@ calc_offsets <- function(fbp) {
   }
   return(offsets)
 }
+
+reconcile_burnt <- function(sim_env) {
+  pts <- sim_env$points
+  if (!is.null(pts)) {
+    print(sprintf('Marking cells as burnt based on %d points', nrow(pts)))
+    cells_new <- getCells(sim_env$landscape, pts)
+    cell_ids <- unique(cells_new$CELL)
+    print(sprintf('Expecting at least %d burnt cells', nrow(cell_ids)))
+    values(sim_env$landscape$burnt)[cell_ids] <- 1
+    print(sprintf('Now have %d burnt cells', sum(values(sim_env$landscape$burnt))))
+    values(sim_env$landscape$unburnable)[cell_ids] <- 1
+    n <- as.data.table(adjacent(sim_env$landscape$unburnable, cells=cell_ids, pairs=TRUE, directions=8))
+    n <- cbind(n, as.data.table(list(unburnable=values(sim_env$landscape$unburnable)[n[, to]])))
+    num_adjacent <- as.data.table(n %>% group_by(from) %>% summarize(n=sum(unburnable)))
+    surrounded_ids <- num_adjacent[n == 8, from]
+    # for any cell that is surrounded by unburnable cells, remove points within
+    out_pt_ids <- cells_new[CELL %in% surrounded_ids, ID]
+    print(sprintf('Removing %d points in surrounded cells', length(out_pt_ids)))
+    keep_pts <- pts[setdiff(1:nrow(pts), out_pt_ids), ]
+    print(sprintf('There are %d points remaining', nrow(keep_pts)))
+    sim_env$points <- keep_pts
+  } else {
+    print('No points after condense')
+  }
+  return(sim_env)
+}
+
 spread <- function(sim_env, wx) {
   if (is.null(sim_env$points)) {
     return()
@@ -349,22 +392,12 @@ spread <- function(sim_env, wx) {
     return(hulled_pts)
   }
   points_new <- condense_points(points_new)
-  if (!is.null(points_new)) {
-    print(sprintf('Have %d points after condense', nrow(points_new)))
-    print(points_new)
-    # HACK: recalculate just so we're not editing the raster inside the condense function
-    cells_new <- getCells(landscape, points_new)
-    print(sprintf('Expecting at least %d burnt cells', nrow(unique(cells_new$CELL))))
-    values(sim_env$landscape$burnt)[unique(cells_new$CELL)] <- 1
-    print(sprintf('After spread condense, have %d burnt cells', sum(values(sim_env$landscape$burnt))))
-  } else {
-    print('No points after condense')
-  }
   print('Incrementing time')
   # HACK: add a seconds so it should be enough to get into next hour if close
   sim_env$time <- sim_env$time + seconds(as.integer(duration * 60) + 1)
   print(sim_env$time)
   sim_env$points <- points_new
+  sim_env <- reconcile_burnt(sim_env)
   return(sim_env)
 }
 start_fire <- function(sim_env, lat, lon, time) {
