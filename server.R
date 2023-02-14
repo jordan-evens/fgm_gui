@@ -151,16 +151,19 @@ server <- function(input, output, session) {
     landscape <- sim_env$landscape
     print(sprintf('Called updatePoints() with %d points', nrow(pts)))
     print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
-    m <- leafletProxy('map_zoom') %>%
-      addPerimeter() %>%
-      removeImage('Burnt') %>%
-      addRasterImage(x=landscape$burnt,
-                     project=FALSE,
-                     colors=COLOURS_BURNT,
-                     opacity=DEFAULT_OPACITY,
-                     layerId='Burnt',
-                     group='Burnt')
-
+    draw_perimeter <- function(map_id) {
+      m <- leafletProxy(map_id) %>%
+        addPerimeter() %>%
+        removeImage('Burnt') %>%
+        addRasterImage(x=landscape$burnt,
+                       project=FALSE,
+                       colors=COLOURS_BURNT,
+                       opacity=DEFAULT_OPACITY,
+                       layerId='Burnt',
+                       group='Burnt')
+    }
+    draw_perimeter('map')
+    draw_perimeter('map_zoom')
     clear_points <- function(map_id) {
       print('clearing active points')
       m <- leafletProxy(map_id) %>%
