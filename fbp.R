@@ -404,7 +404,7 @@ start_fire <- function(sim_env, lat, lon, time) {
   # HACK: use same lat/lon for fbp calculations for now
   sim_env$lat <- lat
   sim_env$lon <- lon
-  sim_env$points <- get_point(landscape, lat, lon)
+  sim_env$points <- get_point(sim_env$landscape, lat, lon)
   sim_env$time <- time
   print(sprintf('Starting fire at (%f, %f) at time %s', lat, lon, time))
   values(sim_env$landscape$burnt) <- 0
