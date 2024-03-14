@@ -10,7 +10,7 @@ source('old_cffdrs.r')
 setwd(dir_root)
 
 get_weather <- function(lat, lon, init=list(ffmc=85, dmc=15, dc=6, percent_cured=100)) {
-  wx <- data.table(read.csv('./cffdrs-ng/test_hffmc.csv'))
+  wx <- data.table(read.csv('./cffdrs-ng/data/test_hffmc.csv'))
   wx$lat <- lat
   wx$long <- lon
   # HACK: make random wind directions that seem reasonable
@@ -28,14 +28,18 @@ get_weather <- function(lat, lon, init=list(ffmc=85, dmc=15, dc=6, percent_cured
   wx$PREC <- 0
   # HACK: halve RH so things actually happen
   wx$RH <- wx$RH / 2
-  wx <- hFWI(wx, tz, ffmc_old=init$ffmc, dmc_old=init$dmc, dc_old=init$dc, percent_cured=init$percent_cured)
+  wx$PERCENT_CURED <- init$percent_cured
+  # wx$GRASS_FUEL_LOAD <-
+  wx <- hFWI(wx, tz, ffmc_old=init$ffmc, dmc_old=init$dmc, dc_old=init$dc)
+  names(wx) <- toupper(names(wx))
+  print(wx)
   # HACK: try to minimize memory usage
   gc()
   wx[, DATETIME := make_datetime(YR, MON, DAY, HR, 0, tz=timezone)]
-  wx <- wx[, -c('LAT', 'LONG', 'YR', 'MON', 'DAY', 'HR', 'MIN_RH', 'SUNLIGHT_HOURS')]
+  wx <- wx[, -c('LAT', 'LONG', 'YR', 'MON', 'DAY', 'HR', 'SUNLIGHT_HOURS')]
   cols <- c('DATETIME', setdiff(names(wx), c('DATETIME')))
   wx <- wx[, ..cols]
-  COLS_SOLAR <- c('SUNRISE', 'SUNSET', 'SOLRAD', 'SOLPROP')
+  COLS_SOLAR <- c('SUNRISE', 'SUNSET', 'SOLRAD')
   cols <- c(setdiff(names(wx), COLS_SOLAR), COLS_SOLAR)
   wx <- wx[, ..cols]
   return(wx)

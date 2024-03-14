@@ -1,7 +1,7 @@
 source('common.R')
 source('weather.R')
 source('fbp.R')
-library('rgeos')
+# library('rgeos')
 library('DT')
 library('shinyvalidate')
 
@@ -128,6 +128,7 @@ server <- function(input, output, session) {
         df[[col]] <- round(df[[col]], precision)
       }
     }
+    print("formatting date")
     # HACK: can't figure out how to use format string in renderDT
     df$DATETIME <- format(df$DATETIME, '%Y-%m-%d %H:%M %Z')
     START_COLS <- c('DATETIME', 'FUELTYPE', 'SLOPE', 'ASPECT')
@@ -332,9 +333,17 @@ server <- function(input, output, session) {
     print(sim_env)
     print('Checking landscape')
     if (!is.null(sim_env) && !is.null(sim_env$landscape)) {
+      startTime <- min(wx$DATETIME) + hours(10)
       pt <- sim_env$origin
       landscape <- sim_env$landscape
+      if (is.null(session$userData$sim_env)) {
+        print("************** Calling start_fire() because no environment yet **************")
+        sim_env <- start_fire(sim_env, lat, lon, startTime)
+        stopifnot(!is.null(sim_env$points))
+        updatePoints(sim_env)
+      }
       session$userData$sim_env <- sim_env
+      stopifnot(!is.null(session$userData$sim_env))
       updateTextInput(session, 'latitude', value=lat)
       updateTextInput(session, 'longitude', value=lon)
       shinyjs::show('div_map_zoom')
@@ -345,7 +354,7 @@ server <- function(input, output, session) {
         print('Adding new landscape to map_zoom')
         output$map_zoom <- renderLeaflet({
           # no point in rendering again if environment didn't change
-          print(sprintf('Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
+          print(sprintf('Rendering: Updating burnt raster to have %d burnt cells', sum(values(landscape$burnt))))
           m <- leaflet() %>%
             addRasterImage(x=landscape$elevation,
                            project=FALSE,
@@ -413,7 +422,6 @@ server <- function(input, output, session) {
       print('Showing wx')
       print(wx)
       print('Update slider')
-      startTime <- min(wx$DATETIME) + hours(10)
       updateSimulationTimeSlider(startTime)
     }
     print('Done initial load')
@@ -498,12 +506,21 @@ server <- function(input, output, session) {
     lon <- session$userData$longitude
     time <- session$userData$startTime
     session$userData$sim_env <- start_fire(session$userData$sim_env, lat, lon, time)
+    stopifnot(!is.null(session$userData$sim_env))
     print(sprintf('After start_fire(), have %d burnt cells', sum(values(session$userData$sim_env$landscape$burnt))))
     updatePoints(session$userData$sim_env)
   })
   observeEvent(input$do_step, {
+    print("do_step")
     wx <- session$userData$wx
+    print(wx)
+    print("Printing user data")
+    print(session$userData)
+    stopifnot(!is.null(session$userData$sim_env$points))
     session$userData$sim_env <- spread(session$userData$sim_env, wx)
+    stopifnot(!is.null(session$userData$sim_env))
+    print(session$userData$sim_env)
+    print("Done user data")
     print(sprintf('After spread(), have %d burnt cells', sum(values(session$userData$sim_env$landscape$burnt))))
     updatePoints(session$userData$sim_env)
   })

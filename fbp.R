@@ -1,5 +1,6 @@
 source('common.R')
 source('weather.R')
+library(sf)
 
 NUM_CELLS <- 200
 RAD_180 <- 180 / pi
@@ -45,10 +46,12 @@ is_unburnable <- function(fueltype) {
 getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
   tif_fbp <- BASE_DATA$TIF_FBP
   if (!check_in_bounds(tif_fbp, lat, lon)) {
+    print("Out of bounds")
     return()
   }
   # HACK: don't create landscape if in same cell as we are already
   pt <- get_point(tif_fbp, lat, lon)
+  stopifnot(!is.null(pt))
   tif_fbp_cell <- cellFromXY(tif_fbp, st_coordinates(pt))
   pt_origin <- st_as_sf(data.frame(latitude=lat, longitude=lon), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
   if (!is.null(sim_env)  && sim_env$origin_cell == tif_fbp_cell) {
@@ -67,6 +70,7 @@ getSimulationEnvironment <- function(lat, lon, sim_env=NULL) {
   box <- ext(c(b$xmin - dist[1] / 2, b$xmax + dist[1] / 2, b$ymin - dist[2] / 2, b$ymax + dist[2] / 2))
   clipped <- tryCatch(crop(tif_fbp, box), error=function(e) { NULL })
   if (is.null(clipped)) {
+    warning("Nothing in clipped area")
     return()
   }
   band <- names(clipped)[[1]]
@@ -284,10 +288,13 @@ reconcile_burnt <- function(sim_env) {
 }
 
 spread <- function(sim_env, wx) {
+  print('spread()')
+  print(sim_env)
+  print(wx)
   if (is.null(sim_env$points)) {
+    print("No points to spread")
     return()
   }
-  print('spread()')
   points_new <- NULL
   landscape <- sim_env$landscape
   cell_size <- res(landscape)
@@ -298,7 +305,7 @@ spread <- function(sim_env, wx) {
   print(pt_cells)
   print('<<<< pt_cells')
   if (is.null(pt_cells)) {
-    print('Could not get cells')
+    print('*************** Could not get cells ***************')
     return()
   }
   print('>>>> cell_fbps')
@@ -401,10 +408,14 @@ spread <- function(sim_env, wx) {
   return(sim_env)
 }
 start_fire <- function(sim_env, lat, lon, time) {
+  print("***************** start_fire() *****************")
   # HACK: use same lat/lon for fbp calculations for now
   sim_env$lat <- lat
   sim_env$lon <- lon
   sim_env$points <- get_point(sim_env$landscape, lat, lon)
+  print("sim_env after fire started:")
+  print(sim_env)
+  stopifnot(!is.null(sim_env$points))
   sim_env$time <- time
   print(sprintf('Starting fire at (%f, %f) at time %s', lat, lon, time))
   values(sim_env$landscape$burnt) <- 0
