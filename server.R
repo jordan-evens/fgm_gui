@@ -334,6 +334,7 @@ server <- function(input, output, session) {
     print('Checking landscape')
     if (!is.null(sim_env) && !is.null(sim_env$landscape)) {
       startTime <- min(wx$DATETIME) + hours(10)
+      sim_env$startTime <- startTime
       pt <- sim_env$origin
       landscape <- sim_env$landscape
       if (is.null(session$userData$sim_env)) {
@@ -514,10 +515,16 @@ server <- function(input, output, session) {
     print("do_step")
     wx <- session$userData$wx
     print(wx)
-    print("Printing user data")
-    print(session$userData)
-    stopifnot(!is.null(session$userData$sim_env$points))
-    session$userData$sim_env <- spread(session$userData$sim_env, wx)
+    sim_env <- session$userData$sim_env
+    if (is.null(sim_env$started)) {
+      sim_env <- start_fire(sim_env, sim_env$latitude, sim_env$longitude, sim_env$startTime)
+      stopifnot(!is.null(sim_env$points))
+      updatePoints(sim_env)
+    }
+    # print("Printing user data")
+    # print(session$userData)
+    # stopifnot(!is.null(session$userData$sim_env$points))
+    session$userData$sim_env <- spread(sim_env, wx)
     stopifnot(!is.null(session$userData$sim_env))
     print(session$userData$sim_env)
     print("Done user data")

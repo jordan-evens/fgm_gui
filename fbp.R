@@ -421,6 +421,7 @@ start_fire <- function(sim_env, lat, lon, time) {
   values(sim_env$landscape$burnt) <- 0
   cell <- getCells(sim_env$landscape, sim_env$points)
   values(sim_env$landscape$burnt)[unique(cell$CELL)] <- 1
+  sim_env$started <- list(lat=lat, lon=lon, time=time)
   return(sim_env)
 }
 # start_fire(landscape, lat, lon, time)
