@@ -54,7 +54,11 @@ server <- function(input, output, session) {
         return()
       }
     }
-    perim <- st_as_sf(raster::rasterToPolygons(sim_env$landscape$burnt, fun=function(x) {x > 0}, digits=1, dissolve=TRUE))
+    burnt <- raster::rasterToPolygons(sim_env$landscape$burnt, fun=function(x) {x > 0}, digits=1, dissolve=TRUE)
+    if (is.null(burnt)) {
+      return(NULL)
+    }
+    perim <- st_as_sf(burnt)
     # HACK: missing crs for some reason
     st_crs(perim) <- st_crs(sim_env$landscape)
     perim <- st_transform(perim, PROJ_DEFAULT)
@@ -337,12 +341,6 @@ server <- function(input, output, session) {
       sim_env$startTime <- startTime
       pt <- sim_env$origin
       landscape <- sim_env$landscape
-      if (is.null(session$userData$sim_env)) {
-        print("************** Calling start_fire() because no environment yet **************")
-        sim_env <- start_fire(sim_env, lat, lon, startTime)
-        stopifnot(!is.null(sim_env$points))
-        updatePoints(sim_env)
-      }
       session$userData$sim_env <- sim_env
       stopifnot(!is.null(session$userData$sim_env))
       updateTextInput(session, 'latitude', value=lat)
@@ -352,6 +350,13 @@ server <- function(input, output, session) {
       bbox <- as.vector(st_bbox(st_transform(st_as_sf(as.polygons(ext(landscape), crs=as.character(crs(landscape)))), PROJ_DEFAULT)))
       print('Drawing zoomed map')
       if (!is_same_env) {
+        # # moved, so reset simulation
+        # if (!is.null(session$userData$sim_env$started)) {
+        #   rm(session$userData$sim_env$started)
+        # }
+        fct_start_fire(sim_env=sim_env, lat=lat, lon=lon, time=startTime)
+        pt <- sim_env$origin
+        landscape <- sim_env$landscape
         print('Adding new landscape to map_zoom')
         output$map_zoom <- renderLeaflet({
           # no point in rendering again if environment didn't change
@@ -424,6 +429,9 @@ server <- function(input, output, session) {
       print(wx)
       print('Update slider')
       updateSimulationTimeSlider(startTime)
+      # print("Update points")
+      # updatePoints(session$userData$sim_env)
+      # output$points <- DT::renderDT(NULL)
     }
     print('Done initial load')
     # HACK: try to minimize memory usage
@@ -501,30 +509,37 @@ server <- function(input, output, session) {
   observeEvent(input$startTime, {
     updateFBPOriginTable()
   })
-  observeEvent(input$do_reset, {
-    landscape <- session$userData$sim_env$landscape
-    lat <- session$userData$latitude
-    lon <- session$userData$longitude
-    time <- session$userData$startTime
-    session$userData$sim_env <- start_fire(session$userData$sim_env, lat, lon, time)
-    stopifnot(!is.null(session$userData$sim_env))
+  fct_start_fire <- function(sim_env=session$userData$sim_env,
+                             lat=session$userData$latitude,
+                             lon=session$userData$longitude,
+                             time=session$userData$startTime) {
+    session$userData$sim_env <- start_fire(sim_env, lat, lon, time)
+
+  }
+  fct_reset <- function() {
+    fct_start_fire()
     print(sprintf('After start_fire(), have %d burnt cells', sum(values(session$userData$sim_env$landscape$burnt))))
     updatePoints(session$userData$sim_env)
+  }
+  observeEvent(input$do_reset, {
+    fct_reset()
   })
   observeEvent(input$do_step, {
     print("do_step")
     wx <- session$userData$wx
     print(wx)
-    sim_env <- session$userData$sim_env
-    if (is.null(sim_env$started)) {
-      sim_env <- start_fire(sim_env, sim_env$latitude, sim_env$longitude, sim_env$startTime)
-      stopifnot(!is.null(sim_env$points))
-      updatePoints(sim_env)
+    if (is.null(session$userData$sim_env$started)) {
+      # sim_env <- start_fire(sim_env,
+      #                       as.numeric(input$latitude),
+      #                       as.numeric(input$longitude),
+      #                       sim_env$startTime)
+      # stopifnot(!is.null(sim_env$points))
+      fct_start_fire()
     }
     # print("Printing user data")
     # print(session$userData)
     # stopifnot(!is.null(session$userData$sim_env$points))
-    session$userData$sim_env <- spread(sim_env, wx)
+    session$userData$sim_env <- spread(session$userData$sim_env, wx)
     stopifnot(!is.null(session$userData$sim_env))
     print(session$userData$sim_env)
     print("Done user data")

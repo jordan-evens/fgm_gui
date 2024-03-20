@@ -18,6 +18,8 @@ deg2rad <- function(theta) {
 }
 
 get_point <- function(landscape, lat, lon) {
+  stopifnot(!is.null(lat))
+  stopifnot(!is.null(lon))
   pt <- st_as_sf(data.frame(longitude=lon, latitude=lat), coords=c('longitude', 'latitude'), crs=PROJ_DEFAULT)
   print('In get_point()')
   pt_proj <- st_transform(pt, st_crs(landscape))
@@ -409,6 +411,7 @@ spread <- function(sim_env, wx) {
 }
 start_fire <- function(sim_env, lat, lon, time) {
   print("***************** start_fire() *****************")
+  print(sim_env)
   # HACK: use same lat/lon for fbp calculations for now
   sim_env$lat <- lat
   sim_env$lon <- lon
